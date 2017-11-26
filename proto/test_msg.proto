@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+option java_package = "cn.edu.pku.sei.sc.allen.model.data";
+
+message Test {
+    int64 id = 1;
+    string name = 2;
+    repeated int32 values = 3;
+}

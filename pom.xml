@@ -41,9 +41,24 @@
             <version>3.21.0</version>
         </dependency>
         <dependency>
+            <groupId>com.microsoft.sqlserver</groupId>
+            <artifactId>mssql-jdbc</artifactId>
+            <version>6.2.2.jre8</version>
+        </dependency>
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>5.1.44</version>
+        </dependency>
+        <dependency>
             <groupId>cc.mallet</groupId>
             <artifactId>mallet</artifactId>
             <version>2.0.8</version>
+        </dependency>
+        <dependency>
+            <groupId>com.google.protobuf</groupId>
+            <artifactId>protobuf-java</artifactId>
+            <version>3.5.0</version>
         </dependency>
     </dependencies>
 
@@ -62,6 +77,10 @@
     </distributionManagement>
 
     <repositories>
+        <repository>
+            <id>jahia</id>
+            <url>http://maven.jahia.org/maven2/</url>
+        </repository>
         <!--软工内部maven仓库，主要用于存放本地的构建内容，以及缓存加速一些线上maven库的下载-->
         <repository>
             <id>sei-sc-public</id>

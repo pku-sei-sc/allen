@@ -1,22 +1,12 @@
 package cn.edu.pku.sei.sc.allen.model;
 
-import javax.persistence.Column;
 import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.Id;
 
 /**
  * Created by dell on 2017/11/26.
  */
 @Entity
-public class DataChunk {
-
-    @Id
-    @GeneratedValue
-    private long id;
-
-    @Column
-    private long createTime;
+public class DataChunk extends BaseModel {
 
     public long getId() {
         return id;
