@@ -1,0 +1,16 @@
+logs/
+out/
+*/target/
+target/
+.idea/
+lib/
+*.class
+*.iml
+*.ipr
+*.iws
+*.db
+
+# Package Files #
+*.jar
+*.war
+*.ear
