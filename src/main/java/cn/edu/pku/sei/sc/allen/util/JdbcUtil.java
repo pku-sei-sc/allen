@@ -5,6 +5,9 @@ import org.apache.tomcat.jdbc.pool.DataSource;
 import org.apache.tomcat.jdbc.pool.PoolProperties;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -15,6 +18,10 @@ import java.util.stream.Collectors;
 public class JdbcUtil {
     public static JdbcTemplate getJdbcTemplate(SqlDataSource sqlDataSource) {
         return new JdbcTemplate(getDataSource(sqlDataSource));
+    }
+
+    public static void closeJdbcTemplate(JdbcTemplate jdbcTemplate) {
+        ((DataSource) jdbcTemplate.getDataSource()).close();
     }
 
     public static DataSource getDataSource(SqlDataSource sqlDataSource) {
@@ -32,9 +39,22 @@ public class JdbcUtil {
         properties.setInitialSize(2);
         properties.setMinIdle(2);
         properties.setMaxIdle(5);
-        properties.setRemoveAbandoned(true);
         return new DataSource(properties);
     }
+
+    public static Connection getConnection(SqlDataSource sqlDataSource) throws SQLException {
+        loadDriver(sqlDataSource.getDriverClassName());
+        return DriverManager.getConnection(sqlDataSource.getUrl(), sqlDataSource.getUsername(), sqlDataSource.getPassword());
+    }
+
+    public static void loadDriver(String driverClassName) {
+        try {
+            Class.forName(driverClassName);
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("数据库驱动加载失败");
+        }
+    }
+
 
     public static String wrapNames(List<String> names) {
         List<String> safeNames = names.stream().map(name -> name.replaceAll("`", ""))

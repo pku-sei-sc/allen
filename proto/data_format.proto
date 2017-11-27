@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+option java_package = "cn.edu.pku.sei.sc.allen.model.data";
+
+message SqlDataSource {
+    string driverClassName = 1;
+    string url = 2;
+    string username = 3;
+    string password = 4;
+}
+
+message DataChunkMeta {
+    SqlDataSource dataSource = 1;
+    string sql = 2;
+    string idName = 3;
+    string wordName = 4;
+    string valueName = 5;
+}
+
+message Manifest {
+    DataChunkMeta dataChunkMeta = 1;
+    int32 partSize = 2; //每个数据文件中实例数量
+    repeated string instanceIds = 3; //实际上是原始文档id到序数文档id的映射关系
+    repeated string tokens = 4; //词汇表
+}
+
+message Token {
+    int32 type = 1; //词语的id
+    int32 count = 2; //词语出现的数量
+    repeated float values = 3; //每个词语的属性值
+}
+
+message Instance {
+    repeated Token tokens = 1;
+}
+
+message DataChunkPart {
+    repeated Instance instances = 1;
+}

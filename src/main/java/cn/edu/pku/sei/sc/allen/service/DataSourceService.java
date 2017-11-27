@@ -27,9 +27,10 @@ public class DataSourceService {
 
     public boolean testSqlDataSource(long id) {
         SqlDataSource sqlDataSource = sqlDataSourceStorage.findOne(id);
-        JdbcTemplate jdbcTemplate = JdbcUtil.getJdbcTemplate(sqlDataSource);
         try {
+            JdbcTemplate jdbcTemplate = JdbcUtil.getJdbcTemplate(sqlDataSource);
             jdbcTemplate.execute("SELECT 1");
+            JdbcUtil.closeJdbcTemplate(jdbcTemplate);
             return true;
         } catch (Exception e) {
             return false;

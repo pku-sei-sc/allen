@@ -1,6 +1,7 @@
 package cn.edu.pku.sei.sc.allen.controller;
 
 import cn.edu.pku.sei.sc.allen.model.DataChunk;
+import cn.edu.pku.sei.sc.allen.model.TaskStatus;
 import cn.edu.pku.sei.sc.allen.model.data.TestMsg;
 import cn.edu.pku.sei.sc.allen.storage.DataChunkStorage;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,11 @@ public class DebugController {
     @RequestMapping(value = "/test1", method = RequestMethod.POST)
     public DataChunk test1() {
         DataChunk dataChunk = new DataChunk();
+        dataChunk.setDataSourceId(1)
+                .setSql("select 1")
+                .setIdName("id")
+                .setTokenName("word")
+                .setStatus(TaskStatus.Stopped);
         return dataChunkStorage.save(dataChunk);
     }
 
@@ -43,10 +49,13 @@ public class DebugController {
 
     public static void test4() throws IOException {
         TestMsg.Test.Builder builder = TestMsg.Test.newBuilder();
-        builder.setId(1)
-                .setName("蛤蛤");
-        for (int i = 0; i < 20000; i++)
+        builder.setId(1);
+        for (int i = 0; i < 10; i++) {
             builder.addValues(i);
+            builder.addDoubles(i);
+        }
+
+
         TestMsg.Test test = builder.build();
         System.out.println(test.getSerializedSize());
         File file = new File("data/1.dat");
@@ -68,6 +77,7 @@ public class DebugController {
 
     public static void main(String[] args) throws IOException {
         test4();
+        test5();
     }
 
 
