@@ -1,6 +1,8 @@
 package cn.edu.pku.sei.sc.allen.service;
 
+import cc.mallet.types.Alphabet;
 import cn.edu.pku.sei.sc.allen.lang.BadRequestException;
+import cn.edu.pku.sei.sc.allen.model.DataChunk;
 import cn.edu.pku.sei.sc.allen.model.DataChunkMeta;
 import cn.edu.pku.sei.sc.allen.model.SqlDataSource;
 import cn.edu.pku.sei.sc.allen.model.TaskStatus;
@@ -14,9 +16,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -97,6 +97,9 @@ public class InputDataService {
     @Async
     public void inputDataChunk(long dataChunkId, boolean forced) throws SQLException, IOException {
         DataChunkMeta dataChunkMeta = dataChunkMetaStorage.findOne(dataChunkId);
+        if (dataChunkMeta == null)
+            throw new IllegalArgumentException("不存在的数据块");
+
         if (!dataSourceService.testSqlDataSource(dataChunkMeta.getDataSourceId()))
             throw new IllegalStateException("无法连接到数据源");
 
@@ -117,153 +120,155 @@ public class InputDataService {
             throw new IllegalStateException("无法创建文件子目录");
 
         long tokenCnt = 0;
-        if (progressMap.put(dataChunkId, tokenCnt) != null)
+        if (progressMap.putIfAbsent(dataChunkId, tokenCnt) != null)
             throw new IllegalStateException("无法重复执行数据导入任务");
+        try {
+            dataChunkMeta.setStatus(TaskStatus.Processing);
+            dataChunkMetaStorage.save(dataChunkMeta);
 
-        dataChunkMeta.setStatus(TaskStatus.Processing);
-        dataChunkMetaStorage.save(dataChunkMeta);
+            //开始导入数据，并写入文件
 
-        //开始导入数据，并写入文件
+            DataFormat.Manifest.Builder manifestBuilder = DataFormat.Manifest.newBuilder();
 
-        DataFormat.Manifest.Builder manifestBuilder = DataFormat.Manifest.newBuilder();
+            manifestBuilder.getDataChunkMetaBuilder().getDataSourceBuilder()
+                    .setDriverClassName(sqlDataSource.getDriverClassName())
+                    .setUrl(sqlDataSource.getUrl())
+                    .setUsername(sqlDataSource.getUsername())
+                    .setPassword(sqlDataSource.getPassword());
 
-        manifestBuilder.getDataChunkMetaBuilder().getDataSourceBuilder()
-                .setDriverClassName(sqlDataSource.getDriverClassName())
-                .setUrl(sqlDataSource.getUrl())
-                .setUsername(sqlDataSource.getUsername())
-                .setPassword(sqlDataSource.getPassword());
+            manifestBuilder.getDataChunkMetaBuilder()
+                    .setSql(dataChunkMeta.getSql())
+                    .setIdName(dataChunkMeta.getIdName())
+                    .setWordName(dataChunkMeta.getTokenName());
 
-        manifestBuilder.getDataChunkMetaBuilder()
-                .setSql(dataChunkMeta.getSql())
-                .setIdName(dataChunkMeta.getIdName())
-                .setWordName(dataChunkMeta.getTokenName());
+            if (dataChunkMeta.getValueName() != null)
+                manifestBuilder.getDataChunkMetaBuilder().setValueName(dataChunkMeta.getValueName());
 
-        if (dataChunkMeta.getValueName() != null)
-            manifestBuilder.getDataChunkMetaBuilder().setValueName(dataChunkMeta.getValueName());
+            manifestBuilder.setPartSize(partSize);
 
-        manifestBuilder.setPartSize(partSize);
+            //执行数据库语句并保存数据
+            Map<String, DataFormat.Instance.Builder> instanceMap = new HashMap<>();
+            Map<String, Map<String, DataFormat.Token.Builder>> instanceTokenMap = new HashMap<>();
+            Set<String> tokenSet = new HashSet <>();
 
-        //执行数据库语句并保存数据
-        Map<String, DataFormat.Instance.Builder> instanceMap = new HashMap<>();
-        Map<String, Map<String, DataFormat.Token.Builder>> instanceTokenMap = new HashMap<>();
-        Set<String> tokenSet = new HashSet<>();
+            try (Connection connection = JdbcUtil.getConnection(sqlDataSource)) {
+                try (PreparedStatement preparedStatement = connection.prepareStatement(dataChunkMeta.getSql())) {
+                    if (sqlDataSource.getUrl().toLowerCase().contains("mysql")) //mysql特殊处理
+                        preparedStatement.setFetchSize(Integer.MIN_VALUE);
+                    try (ResultSet resultSet = preparedStatement.executeQuery()) {
+                        int idColumn = resultSet.findColumn(dataChunkMeta.getIdName());
+                        int tokenColumn = resultSet.findColumn(dataChunkMeta.getTokenName());
+                        int valueColumn = dataChunkMeta.getValueName() == null ?
+                                -1 : resultSet.findColumn(dataChunkMeta.getValueName());
 
-        try (Connection connection = JdbcUtil.getConnection(sqlDataSource)) {
-            try (PreparedStatement preparedStatement = connection.prepareStatement(dataChunkMeta.getSql())) {
-                if (sqlDataSource.getUrl().toLowerCase().contains("mysql")) //mysql特殊处理
-                    preparedStatement.setFetchSize(Integer.MIN_VALUE);
-                try (ResultSet resultSet = preparedStatement.executeQuery()) {
-                    int idColumn = resultSet.findColumn(dataChunkMeta.getIdName());
-                    int tokenColumn = resultSet.findColumn(dataChunkMeta.getTokenName());
-                    int valueColumn = dataChunkMeta.getValueName() == null ?
-                            -1 : resultSet.findColumn(dataChunkMeta.getValueName());
+                        while (resultSet.next()) {
+                            String instanceId = resultSet.getString(idColumn);
+                            String token = resultSet.getString(tokenColumn);
+                            if (instanceId == null || token == null) continue;
 
-                    while (resultSet.next()) {
-                        String instanceId = resultSet.getString(idColumn);
-                        String token = resultSet.getString(tokenColumn);
-                        if (instanceId == null || token == null) continue;
+                            Float value = null;
 
-                        Float value = null;
-
-                        if (dataChunkMeta.getValueName() != null) {
-                            String valueStr = resultSet.getString(valueColumn);
-                            try {
-                                value = Float.parseFloat(valueStr);
-                            } catch (Exception e) {
-                                continue;
+                            if (dataChunkMeta.getValueName() != null) {
+                                String valueStr = resultSet.getString(valueColumn);
+                                try {
+                                    value = Float.parseFloat(valueStr);
+                                } catch (Exception e) {
+                                    continue;
+                                }
                             }
+
+
+                            if (!instanceMap.containsKey(instanceId)) {
+                                instanceMap.put(instanceId, DataFormat.Instance.newBuilder());
+                                instanceTokenMap.put(instanceId, new HashMap<>());
+                            }
+
+                            if (!instanceTokenMap.get(instanceId).containsKey(token)) {
+                                DataFormat.Token.Builder builder = DataFormat.Token.newBuilder();
+                                instanceTokenMap.get(instanceId).put(token, builder);
+                                tokenSet.add(token);
+                            }
+
+                            DataFormat.Token.Builder tokenBuilder = instanceTokenMap.get(instanceId).get(token);
+                            int count = tokenBuilder.getCount();
+                            tokenBuilder.setCount(count + 1);
+                            if (value != null)
+                                tokenBuilder.addValues(value);
+                            progressMap.put(dataChunkId, ++tokenCnt);
                         }
-
-
-                        if (!instanceMap.containsKey(instanceId)) {
-                            instanceMap.put(instanceId, DataFormat.Instance.newBuilder());
-                            instanceTokenMap.put(instanceId, new HashMap<>());
-                        }
-
-                        if (!instanceTokenMap.get(instanceId).containsKey(token)) {
-                            DataFormat.Token.Builder builder = DataFormat.Token.newBuilder();
-                            instanceTokenMap.get(instanceId).put(token, builder);
-                            tokenSet.add(token);
-                        }
-
-                        DataFormat.Token.Builder tokenBuilder = instanceTokenMap.get(instanceId).get(token);
-                        int count = tokenBuilder.getCount();
-                        tokenBuilder.setCount(count + 1);
-                        if (value != null)
-                            tokenBuilder.addValues(value);
-                        progressMap.put(dataChunkId, ++tokenCnt);
                     }
                 }
             }
-        }
 
-        //排序、划分数据
-        List<String> instanceIds = new ArrayList<>();
-        instanceIds.addAll(instanceMap.keySet());
-        Collections.sort(instanceIds);
+            //排序、划分数据
+            List<String> instanceIds = new ArrayList<>();
+            instanceIds.addAll(instanceMap.keySet());
+            Collections.sort(instanceIds);
 
-        List<String> tokens = new ArrayList<>();
-        tokens.addAll(tokenSet);
-        Collections.sort(tokens);
+            List<String> tokens = new ArrayList<>();
+            tokens.addAll(tokenSet);
+            Collections.sort(tokens);
 
-        manifestBuilder
-                .addAllInstanceIds(instanceIds)
-                .addAllTokens(tokens);
+            manifestBuilder
+                    .addAllInstanceIds(instanceIds)
+                    .addAllTokens(tokens);
 
-        DataFormat.Manifest manifest = manifestBuilder.build();
+            DataFormat.Manifest manifest = manifestBuilder.build();
 
-        Map<String, Integer> token2type = new HashMap<>();
-        for (int i = 0; i < tokens.size(); i++)
-            token2type.put(tokens.get(i), i);
+            Map<String, Integer> token2type = new HashMap<>();
+            for (int i = 0; i < tokens.size(); i++)
+                token2type.put(tokens.get(i), i);
 
-        List<DataFormat.DataChunkPart> parts = new ArrayList<>();
-        DataFormat.DataChunkPart.Builder partBuilder = null;
+            List<DataFormat.DataChunkPart> parts = new ArrayList<>();
+            DataFormat.DataChunkPart.Builder partBuilder = null;
 
-        for (int i = 0; i < instanceIds.size(); i++) {
-            if (i % partSize == 0) {
-                if (partBuilder != null)
-                    parts.add(partBuilder.build());
-                partBuilder = DataFormat.DataChunkPart.newBuilder();
+            for (int i = 0; i < instanceIds.size(); i++) {
+                if (i % partSize == 0) {
+                    if (partBuilder != null)
+                        parts.add(partBuilder.build());
+                    partBuilder = DataFormat.DataChunkPart.newBuilder();
+                }
+                String instanceId = instanceIds.get(i);
+
+                List<DataFormat.Token> tokenList = new ArrayList<>();
+                for (Map.Entry<String, DataFormat.Token.Builder> entry : instanceTokenMap.get(instanceId).entrySet()) {
+                    entry.getValue().setType(token2type.get(entry.getKey()));
+                    tokenList.add(entry.getValue().build());
+                }
+
+                tokenList.sort(Comparator.comparingInt(DataFormat.Token::getCount).reversed());
+
+                DataFormat.Instance.Builder instanceBuilder = instanceMap.get(instanceId);
+                instanceBuilder.addAllTokens(tokenList);
+
+                partBuilder.addInstances(instanceBuilder);
             }
-            String instanceId = instanceIds.get(i);
+            if (partBuilder != null)
+                parts.add(partBuilder.build());
 
-            List<DataFormat.Token> tokenList = new ArrayList<>();
-            for (Map.Entry<String, DataFormat.Token.Builder> entry : instanceTokenMap.get(instanceId).entrySet()) {
-                entry.getValue().setType(token2type.get(entry.getKey()));
-                tokenList.add(entry.getValue().build());
+            //写入文件
+
+            try (FileOutputStream fileOutputStream = new FileOutputStream(manifestFile)) {
+                manifest.writeTo(fileOutputStream);
             }
 
-            tokenList.sort(Comparator.comparingInt(DataFormat.Token::getCount).reversed());
-
-            DataFormat.Instance.Builder instanceBuilder = instanceMap.get(instanceId);
-            instanceBuilder.addAllTokens(tokenList);
-
-            partBuilder.addInstances(instanceBuilder);
-        }
-        if (partBuilder != null)
-            parts.add(partBuilder.build());
-
-        //写入文件
-
-        try (FileOutputStream fileOutputStream = new FileOutputStream(manifestFile)) {
-            manifest.writeTo(fileOutputStream);
-        }
-
-        for (int i = 0; i < parts.size(); i++) {
-            DataFormat.DataChunkPart part = parts.get(i);
-            File partFile = new File(getDataChunkPartPath(dataChunkMeta.getManifestId(), i));
-            try (FileOutputStream fileOutputStream = new FileOutputStream(partFile)) {
-                part.writeTo(fileOutputStream);
+            for (int i = 0; i < parts.size(); i++) {
+                DataFormat.DataChunkPart part = parts.get(i);
+                File partFile = new File(getDataChunkPartPath(dataChunkMeta.getManifestId(), i));
+                try (FileOutputStream fileOutputStream = new FileOutputStream(partFile)) {
+                    part.writeTo(fileOutputStream);
+                }
             }
+
+            dataChunkMeta.setStatus(TaskStatus.Finished)
+                    .setTotalInstances(instanceIds.size())
+                    .setTotalTypes(tokens.size())
+                    .setTotalTokens(tokenCnt);
+
+            dataChunkMetaStorage.save(dataChunkMeta);
+        } finally {
+            progressMap.remove(dataChunkId);
         }
-
-        dataChunkMeta.setStatus(TaskStatus.Finished)
-                .setTotalInstances(instanceIds.size())
-                .setTotalTypes(tokens.size())
-                .setTotalTokens(tokenCnt);
-
-        dataChunkMetaStorage.save(dataChunkMeta);
-        progressMap.remove(dataChunkId);
     }
 
     public long getProgress(long dataChunkId) {
@@ -286,7 +291,52 @@ public class InputDataService {
         }
     }
 
-    public void loadDataChunk() {
+    public DataChunk loadDataChunk(DataChunkMeta dataChunkMeta) throws IOException {
+        //开始读取数据文件
 
+        File manifestFile = new File(getManifestDataPath(dataChunkMeta.getManifestId()));
+        if (!manifestFile.isFile())
+            throw new BadRequestException("找不到数据块目录文件");
+
+        DataFormat.Manifest manifest;
+        try (FileInputStream fileInputStream = new FileInputStream(manifestFile)) {
+            manifest = DataFormat.Manifest.parseFrom(fileInputStream);
+        }
+
+        int totalInstances = manifest.getInstanceIdsCount();
+
+        List<DataFormat.Instance> instances = new ArrayList<>();
+
+        for (int i = 0; i * manifest.getPartSize() < totalInstances; i++) {
+            File partFile = new File(getDataChunkPartPath(dataChunkMeta.getManifestId(), i));
+            if (!partFile.isFile())
+                throw new BadRequestException("丢失数据块文件：" + partFile.getPath());
+
+            try (FileInputStream fileInputStream = new FileInputStream(partFile)) {
+                DataFormat.DataChunkPart dataChunkPart = DataFormat.DataChunkPart.parseFrom(fileInputStream);
+                instances.addAll(dataChunkPart.getInstancesList());
+            }
+        }
+
+        //开始构建数据块
+
+        DataChunk dataChunk = new DataChunk()
+                .setMeta(dataChunkMeta)
+                .setInstanceAlphabet(new Alphabet(String.class))
+                .setTokenAlphabet(new Alphabet(String.class))
+                .setInstances(instances);
+
+        dataChunk.getInstanceAlphabet().lookupIndices(manifest.getInstanceIdsList().toArray(), true);
+        dataChunk.getTokenAlphabet().lookupIndices(manifest.getTokensList().toArray(), true);
+
+        return dataChunk;
+    }
+
+    public DataChunk loadDataChunk(long dataChunkId) throws IOException {
+        DataChunkMeta dataChunkMeta = dataChunkMetaStorage.findOne(dataChunkId);
+        if (dataChunkMeta == null || dataChunkMeta.getStatus() != TaskStatus.Finished)
+            throw new BadRequestException("数据块不存在或还没有完成导入");
+
+        return loadDataChunk(dataChunkMeta);
     }
 }

@@ -16,7 +16,7 @@ import java.io.IOException;
  */
 @SpringBootApplication
 @RestController
-@EnableAsync
+@EnableAsync(proxyTargetClass = true)
 @EnableJpaAuditing
 public class Application {
 

@@ -12,4 +12,6 @@ import java.util.List;
 @Repository
 public interface DataChunkMetaStorage extends CrudRepository<DataChunkMeta, Long> {
     List<DataChunkMeta> findAll();
+
+    List<DataChunkMeta> findAll(Iterable<Long> ids);
 }

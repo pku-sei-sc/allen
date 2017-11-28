@@ -8,6 +8,8 @@ import cc.mallet.pipe.iterator.CsvIterator;
 import cc.mallet.types.*;
 import cc.mallet.util.Randoms;
 import cn.edu.pku.sei.sc.allen.model.TopicWord2;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.util.*;
@@ -18,6 +20,8 @@ import java.util.regex.Pattern;
  */
 public class MVMATopicModel extends PolylingualTopicModel {
 
+    private static final Logger log = LoggerFactory.getLogger(MVMATopicModel.class);
+
     protected int[][][] languageTypeTopicCountsNonsparse;
     //    protected ArrayList<double[][]> realFeatures = new ArrayList<>();
     protected ArrayList<double[]>[] realFeatures;
@@ -26,8 +30,29 @@ public class MVMATopicModel extends PolylingualTopicModel {
     double[][][] languageTypeTopicSums;
     boolean[] hasValue;
 
-    public MVMATopicModel(int numberOfTopics, double alphaSum) {
+    //用时查询
+    private long totalTime;
+
+    private long taskId;
+
+    private int maxIteration;
+
+    public long getTotalTime() {
+        return totalTime;
+    }
+
+    public int getMaxIteration() {
+        return maxIteration;
+    }
+
+    public int getIterationSoFar() {
+        return iterationsSoFar;
+    }
+
+    public MVMATopicModel(int numberOfTopics, double alphaSum, long taskId) {
         super (numberOfTopics, alphaSum, new Randoms());
+        this.taskId = taskId;
+        this.showTopicsInterval = 0; //不打印中间过程
     }
 
     public void addInstancesWithValues (InstanceList[] training, ArrayList<double[]>[] valueList) {
@@ -364,87 +389,59 @@ public class MVMATopicModel extends PolylingualTopicModel {
     }
 
     @Override
-    public void estimate () throws IOException {
+    public void estimate () {
         estimate (numIterations);
     }
 
     @Override
-    public void estimate (int iterationsThisRound) throws IOException {
+    public void estimate (int iterationsThisRound) {
 
-        long startTime = System.currentTimeMillis();
-        int maxIteration = iterationsSoFar + iterationsThisRound;
+        maxIteration = iterationsSoFar + iterationsThisRound - 1;
 
-        long totalTime = 0;
+        totalTime = 0;
 
         for ( ; iterationsSoFar <= maxIteration; iterationsSoFar++) {
             long iterationStart = System.currentTimeMillis();
 
-            if (showTopicsInterval != 0 && iterationsSoFar != 0 && iterationsSoFar % showTopicsInterval == 0) {
-                System.out.println();
-                printTopWords (System.out, wordsPerTopic, false);
-
-            }
-
-//            if (saveStateInterval != 0 && iterationsSoFar % saveStateInterval == 0) {
-//                this.printState(new File(stateFilename + '.' + iterationsSoFar));
-//            }
-
-			/*
-			  if (saveModelInterval != 0 && iterations % saveModelInterval == 0) {
-			  this.write (new File(modelFilename+'.'+iterations));
-			  }
-			*/
-
-            // TODO this condition should also check that we have more than one sample to work with here
-            // (The number of samples actually obtained is not yet tracked.)
-//            if (iterationsSoFar > burninPeriod && optimizeInterval != 0 &&
-//                    iterationsSoFar % optimizeInterval == 0) {
-//
-//                alphaSum = Dirichlet.learnParameters(alpha, topicDocCounts, docLengthCounts);
-//                optimizeBetas();
-//                clearHistograms();
-//                cacheValues();
-//            }
-
-            // Loop over every document in the corpus
-            topicTermCount = betaTopicCount = smoothingOnlyCount = 0;
-
-            for (int doc = 0; doc < data.size(); doc++) {
-                sampleTopicsForOneDoc (data.get(doc), doc,
-                        (iterationsSoFar >= burninPeriod &&
-                                iterationsSoFar % saveSampleInterval == 0));
-            }
+            for (int doc = 0; doc < data.size(); doc++)
+                sampleTopicsForOneDoc (data.get(doc), doc);
 
             long elapsedMillis = System.currentTimeMillis() - iterationStart;
             totalTime += elapsedMillis;
 
-            if ((iterationsSoFar + 1) % 10 == 0) {
+            double progress = iterationsSoFar * 100 / maxIteration;
 
+            if (iterationsSoFar % 50 == 0) {
                 double ll = modelLogLikelihood();
-                System.out.println(elapsedMillis + "\t" + totalTime + "\t" +
-                        ll);
+                log.info("Task id:{}\titeration:{}/{}\tprogress:{}%\tlast:{}ms\taverage:{}ms\ttotal:{}s\tremaining:{}s",
+                        taskId, iterationsSoFar, maxIteration, String.format("%.1f", progress), elapsedMillis,
+                        totalTime / iterationsSoFar, totalTime / 1000,
+                        totalTime * (maxIteration - iterationsSoFar) / iterationsSoFar / 1000);
+                log.info("Task id:{}\tmodel log likelihood:{}", taskId, String.format("%.4f", ll));
+            } else if (iterationsSoFar % 10 == 0) {
+                log.info("Task id:{}\titeration:{}/{}\tprogress:{}%\tlast:{}ms\taverage:{}ms\ttotal:{}s\tremaining:{}s",
+                        taskId, iterationsSoFar, maxIteration, String.format("%.1f", progress), elapsedMillis,
+                        totalTime / iterationsSoFar, totalTime / 1000,
+                        totalTime * (maxIteration - iterationsSoFar) / iterationsSoFar / 1000);
+            } else {
+                log.debug("Task id:{}\titeration:{}/{}\tprogress:{}%\tlast:{}ms\taverage:{}ms\ttotal:{}s\tremaining:{}s",
+                        taskId, iterationsSoFar, maxIteration, String.format("%.1f", progress), elapsedMillis,
+                        totalTime / iterationsSoFar, totalTime / 1000,
+                        totalTime * (maxIteration - iterationsSoFar) / iterationsSoFar / 1000);
             }
-            else {
-                System.out.print(elapsedMillis + " ");
+
+            if (showTopicsInterval != 0 && iterationsSoFar != 0 && iterationsSoFar % showTopicsInterval == 0) {
+                ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+                PrintStream printStream = new PrintStream(byteArrayOutputStream);
+                printStream.println("Top words:");
+                printTopWords(printStream, wordsPerTopic, false);
+                log.info(byteArrayOutputStream.toString());
             }
         }
-
-		/*
-		long seconds = Math.round((System.currentTimeMillis() - startTime)/1000.0);
-		long minutes = seconds / 60;	seconds %= 60;
-		long hours = minutes / 60;	minutes %= 60;
-		long days = hours / 24;	hours %= 24;
-		System.out.print ("\nTotal time: ");
-		if (days != 0) { System.out.print(days); System.out.print(" days "); }
-		if (hours != 0) { System.out.print(hours); System.out.print(" hours "); }
-		if (minutes != 0) { System.out.print(minutes); System.out.print(" minutes "); }
-		System.out.print(seconds); System.out.println(" seconds");
-		*/
     }
 
 
-    protected void sampleTopicsForOneDoc (TopicAssignment topicAssignment, int docIndex,
-                                          boolean shouldSaveState) {
+    private void sampleTopicsForOneDoc (TopicAssignment topicAssignment, int docIndex) {
         int[] currentTypeTopicCounts;
         int type, oldTopic, newTopic;
         double value = 0;
@@ -652,16 +649,16 @@ public class MVMATopicModel extends PolylingualTopicModel {
 
 //        out.println("----" + languageTopicSortedWords[0][2].size() + "----");
         for (int topic = 0; topic < numTopics; topic++) {
-            out.println (topic + "\t" + formatter.format(alpha[topic]));
+            out.println (topicAlphabet.lookupObject(topic) + "\talpha:" + formatter.format(alpha[topic]));
             for (int language = 0; language < numLanguages; language++) {
-                out.print(" " + language + "\t" + languageTokensPerTopic[language][topic] + "\t" + betas[language] + "\t");
+                out.print("\tlanguage:" + language + "\ttokens:" + languageTokensPerTopic[language][topic] + "\tbeta:" + betas[language] + "\t");
                 TreeSet<IDSorter> sortedWords = languageTopicSortedWords[language][topic];
                 Alphabet alphabet = alphabets[language];
                 int word = 0;
                 Iterator<IDSorter> iterator = sortedWords.iterator();
                 while (iterator.hasNext() && word < numWords) {
                     IDSorter info = iterator.next();
-                    out.print(alphabet.lookupObject(info.getID()) + ":" + info.getWeight() + " ");
+                    out.print(alphabet.lookupObject(info.getID()) + ":" + String.format("%.6f", info.getWeight()) + "\t");
                     word++;
                 }
                 out.println();
@@ -833,7 +830,7 @@ public class MVMATopicModel extends PolylingualTopicModel {
         instances.addThruPipe(new CsvIterator(fileReader, Pattern.compile("^(\\S*)[\\s,]*(\\S*)[\\s,]*(.*)$"), 3, 2, 1));
 
         instls[0] = instances;
-        MVMATopicModel polymodelNoParse = new MVMATopicModel(3, 0.1);
+        MVMATopicModel polymodelNoParse = new MVMATopicModel(3, 0.1, 0);
         polymodelNoParse.addInstances(instls);
         polymodelNoParse.setNumIterations(800);
 //        polymodelNoParse.optimizeBetas();
