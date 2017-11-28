@@ -1,10 +1,10 @@
 package cn.edu.pku.sei.sc.allen.controller;
 
-import cn.edu.pku.sei.sc.allen.model.DataChunk;
+import cn.edu.pku.sei.sc.allen.model.DataChunkMeta;
 import cn.edu.pku.sei.sc.allen.model.SqlDataSource;
 import cn.edu.pku.sei.sc.allen.service.DataSourceService;
 import cn.edu.pku.sei.sc.allen.service.InputDataService;
-import cn.edu.pku.sei.sc.allen.storage.DataChunkStorage;
+import cn.edu.pku.sei.sc.allen.storage.DataChunkMetaStorage;
 import cn.edu.pku.sei.sc.allen.storage.SqlDataSourceStorage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -27,7 +27,7 @@ public class InputDataController {
     private SqlDataSourceStorage sqlDataSourceStorage;
 
     @Autowired
-    private DataChunkStorage dataChunkStorage;
+    private DataChunkMetaStorage dataChunkMetaStorage;
 
     @Autowired
     private InputDataService inputDataService;
@@ -52,17 +52,17 @@ public class InputDataController {
 
 
     @RequestMapping(value = "/data", method = RequestMethod.POST)
-    public DataChunk inputData(@RequestParam long dataSourceId,
-                               @RequestParam String sql,
-                               @RequestParam String idName,
-                               @RequestParam String tokenName,
-                               @RequestParam(required = false) String valueName) {
+    public DataChunkMeta inputData(@RequestParam long dataSourceId,
+                                   @RequestParam String sql,
+                                   @RequestParam String idName,
+                                   @RequestParam String tokenName,
+                                   @RequestParam(required = false) String valueName) {
         return inputDataService.createDataChunk(dataSourceId, sql, idName, tokenName, valueName);
     }
 
     @RequestMapping(value = "/data", method = RequestMethod.GET)
-    public List<DataChunk> getDataChunks() {
-        return dataChunkStorage.findAll();
+    public List<DataChunkMeta> getDataChunks() {
+        return dataChunkMetaStorage.findAll();
     }
 
     @RequestMapping(value = "/data/{dataChunkId}/start", method = RequestMethod.POST)

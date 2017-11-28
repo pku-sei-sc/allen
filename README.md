@@ -5,7 +5,8 @@
 ## 关于SQL数据库驱动
 
 mysql驱动：`com.mysql.jdbc.Driver`
-   `com.mysql.cj.jdbc.Driver`
+  
+新版驱动（不支持5.5以下版本mysql数据库）：`com.mysql.cj.jdbc.Driver`
 
 sqlserver驱动：`com.microsoft.sqlserver.jdbc.SQLServerDriver`
 

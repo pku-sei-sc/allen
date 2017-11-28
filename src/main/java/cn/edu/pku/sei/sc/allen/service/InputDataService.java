@@ -1,11 +1,11 @@
 package cn.edu.pku.sei.sc.allen.service;
 
 import cn.edu.pku.sei.sc.allen.lang.BadRequestException;
-import cn.edu.pku.sei.sc.allen.model.DataChunk;
+import cn.edu.pku.sei.sc.allen.model.DataChunkMeta;
 import cn.edu.pku.sei.sc.allen.model.SqlDataSource;
 import cn.edu.pku.sei.sc.allen.model.TaskStatus;
 import cn.edu.pku.sei.sc.allen.model.data.DataFormat;
-import cn.edu.pku.sei.sc.allen.storage.DataChunkStorage;
+import cn.edu.pku.sei.sc.allen.storage.DataChunkMetaStorage;
 import cn.edu.pku.sei.sc.allen.storage.SqlDataSourceStorage;
 import cn.edu.pku.sei.sc.allen.util.JdbcUtil;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +35,7 @@ public class InputDataService {
     private DataSourceService dataSourceService;
 
     @Autowired
-    private DataChunkStorage dataChunkStorage;
+    private DataChunkMetaStorage dataChunkMetaStorage;
 
     @Autowired
     private SqlDataSourceStorage sqlDataSourceStorage;
@@ -73,17 +73,17 @@ public class InputDataService {
             throw new IllegalStateException("无法创建data目录，请手动创建目录后重试");
     }
 
-    public DataChunk createDataChunk(long dataSourceId, String sql, String idName, String tokenName, String valueName) {
+    public DataChunkMeta createDataChunk(long dataSourceId, String sql, String idName, String tokenName, String valueName) {
         if (!dataSourceService.testSqlDataSource(dataSourceId))
             throw new IllegalStateException("数据源连接失败");
-        DataChunk dataChunk = new DataChunk()
+        DataChunkMeta dataChunkMeta = new DataChunkMeta()
                 .setDataSourceId(dataSourceId)
                 .setSql(sql)
                 .setIdName(idName)
                 .setTokenName(tokenName)
                 .setValueName(valueName)
                 .setStatus(TaskStatus.Stopped);
-        return dataChunkStorage.save(dataChunk);
+        return dataChunkMetaStorage.save(dataChunkMeta);
     }
 
     private String getManifestDataPath(String manifestId) {
@@ -96,21 +96,21 @@ public class InputDataService {
 
     @Async
     public void inputDataChunk(long dataChunkId, boolean forced) throws SQLException, IOException {
-        DataChunk dataChunk = dataChunkStorage.findOne(dataChunkId);
-        if (!dataSourceService.testSqlDataSource(dataChunk.getDataSourceId()))
+        DataChunkMeta dataChunkMeta = dataChunkMetaStorage.findOne(dataChunkId);
+        if (!dataSourceService.testSqlDataSource(dataChunkMeta.getDataSourceId()))
             throw new IllegalStateException("无法连接到数据源");
 
-        SqlDataSource sqlDataSource = sqlDataSourceStorage.findOne(dataChunk.getDataSourceId());
+        SqlDataSource sqlDataSource = sqlDataSourceStorage.findOne(dataChunkMeta.getDataSourceId());
 
-        if (dataChunk.getStatus() != TaskStatus.Stopped && !forced)
+        if (dataChunkMeta.getStatus() != TaskStatus.Stopped && !forced)
             throw new IllegalStateException("无法开始一个非停止状态的任务，尝试强制开始");
 
-        dataChunk.setManifestId(UUID.randomUUID().toString());
-        File manifestFile = new File(getManifestDataPath(dataChunk.getManifestId()));
+        dataChunkMeta.setManifestId(UUID.randomUUID().toString());
+        File manifestFile = new File(getManifestDataPath(dataChunkMeta.getManifestId()));
 
         while(manifestFile.isFile()) {
-            dataChunk.setManifestId(UUID.randomUUID().toString());
-            manifestFile = new File(getManifestDataPath(dataChunk.getManifestId()));
+            dataChunkMeta.setManifestId(UUID.randomUUID().toString());
+            manifestFile = new File(getManifestDataPath(dataChunkMeta.getManifestId()));
         }
 
         if (!manifestFile.getParentFile().isDirectory() && !manifestFile.getParentFile().mkdir())
@@ -120,8 +120,8 @@ public class InputDataService {
         if (progressMap.put(dataChunkId, tokenCnt) != null)
             throw new IllegalStateException("无法重复执行数据导入任务");
 
-        dataChunk.setStatus(TaskStatus.Processing);
-        dataChunkStorage.save(dataChunk);
+        dataChunkMeta.setStatus(TaskStatus.Processing);
+        dataChunkMetaStorage.save(dataChunkMeta);
 
         //开始导入数据，并写入文件
 
@@ -134,12 +134,12 @@ public class InputDataService {
                 .setPassword(sqlDataSource.getPassword());
 
         manifestBuilder.getDataChunkMetaBuilder()
-                .setSql(dataChunk.getSql())
-                .setIdName(dataChunk.getIdName())
-                .setWordName(dataChunk.getTokenName());
+                .setSql(dataChunkMeta.getSql())
+                .setIdName(dataChunkMeta.getIdName())
+                .setWordName(dataChunkMeta.getTokenName());
 
-        if (dataChunk.getValueName() != null)
-            manifestBuilder.getDataChunkMetaBuilder().setValueName(dataChunk.getValueName());
+        if (dataChunkMeta.getValueName() != null)
+            manifestBuilder.getDataChunkMetaBuilder().setValueName(dataChunkMeta.getValueName());
 
         manifestBuilder.setPartSize(partSize);
 
@@ -149,14 +149,14 @@ public class InputDataService {
         Set<String> tokenSet = new HashSet<>();
 
         try (Connection connection = JdbcUtil.getConnection(sqlDataSource)) {
-            try (PreparedStatement preparedStatement = connection.prepareStatement(dataChunk.getSql())) {
+            try (PreparedStatement preparedStatement = connection.prepareStatement(dataChunkMeta.getSql())) {
                 if (sqlDataSource.getUrl().toLowerCase().contains("mysql")) //mysql特殊处理
                     preparedStatement.setFetchSize(Integer.MIN_VALUE);
                 try (ResultSet resultSet = preparedStatement.executeQuery()) {
-                    int idColumn = resultSet.findColumn(dataChunk.getIdName());
-                    int tokenColumn = resultSet.findColumn(dataChunk.getTokenName());
-                    int valueColumn = dataChunk.getValueName() == null ?
-                            -1 : resultSet.findColumn(dataChunk.getValueName());
+                    int idColumn = resultSet.findColumn(dataChunkMeta.getIdName());
+                    int tokenColumn = resultSet.findColumn(dataChunkMeta.getTokenName());
+                    int valueColumn = dataChunkMeta.getValueName() == null ?
+                            -1 : resultSet.findColumn(dataChunkMeta.getValueName());
 
                     while (resultSet.next()) {
                         String instanceId = resultSet.getString(idColumn);
@@ -165,7 +165,7 @@ public class InputDataService {
 
                         Float value = null;
 
-                        if (dataChunk.getValueName() != null) {
+                        if (dataChunkMeta.getValueName() != null) {
                             String valueStr = resultSet.getString(valueColumn);
                             try {
                                 value = Float.parseFloat(valueStr);
@@ -251,26 +251,26 @@ public class InputDataService {
 
         for (int i = 0; i < parts.size(); i++) {
             DataFormat.DataChunkPart part = parts.get(i);
-            File partFile = new File(getDataChunkPartPath(dataChunk.getManifestId(), i));
+            File partFile = new File(getDataChunkPartPath(dataChunkMeta.getManifestId(), i));
             try (FileOutputStream fileOutputStream = new FileOutputStream(partFile)) {
                 part.writeTo(fileOutputStream);
             }
         }
 
-        dataChunk.setStatus(TaskStatus.Finished)
+        dataChunkMeta.setStatus(TaskStatus.Finished)
                 .setTotalInstances(instanceIds.size())
                 .setTotalTypes(tokens.size())
                 .setTotalTokens(tokenCnt);
 
-        dataChunkStorage.save(dataChunk);
+        dataChunkMetaStorage.save(dataChunkMeta);
         progressMap.remove(dataChunkId);
     }
 
     public long getProgress(long dataChunkId) {
-        DataChunk dataChunk = dataChunkStorage.findOne(dataChunkId);
-        if (dataChunk == null)
+        DataChunkMeta dataChunkMeta = dataChunkMetaStorage.findOne(dataChunkId);
+        if (dataChunkMeta == null)
             throw new BadRequestException("不存在的数据块");
-        switch (dataChunk.getStatus()) {
+        switch (dataChunkMeta.getStatus()) {
             case Stopped:
                 throw new BadRequestException("任务未运行");
             case Finished:
@@ -284,5 +284,9 @@ public class InputDataService {
             default:
                 throw new IllegalStateException("未知状态");
         }
+    }
+
+    public void loadDataChunk() {
+
     }
 }

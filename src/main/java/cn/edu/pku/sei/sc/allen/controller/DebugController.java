@@ -1,9 +1,9 @@
 package cn.edu.pku.sei.sc.allen.controller;
 
-import cn.edu.pku.sei.sc.allen.model.DataChunk;
+import cn.edu.pku.sei.sc.allen.model.DataChunkMeta;
 import cn.edu.pku.sei.sc.allen.model.TaskStatus;
 import cn.edu.pku.sei.sc.allen.model.data.TestMsg;
-import cn.edu.pku.sei.sc.allen.storage.DataChunkStorage;
+import cn.edu.pku.sei.sc.allen.storage.DataChunkMetaStorage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -24,27 +24,27 @@ import java.util.List;
 public class DebugController {
 
     @Autowired
-    private DataChunkStorage dataChunkStorage;
+    private DataChunkMetaStorage dataChunkMetaStorage;
 
     @RequestMapping(value = "/test1", method = RequestMethod.POST)
-    public DataChunk test1() {
-        DataChunk dataChunk = new DataChunk();
-        dataChunk.setDataSourceId(1)
+    public DataChunkMeta test1() {
+        DataChunkMeta dataChunkMeta = new DataChunkMeta();
+        dataChunkMeta.setDataSourceId(1)
                 .setSql("select 1")
                 .setIdName("id")
                 .setTokenName("word")
                 .setStatus(TaskStatus.Stopped);
-        return dataChunkStorage.save(dataChunk);
+        return dataChunkMetaStorage.save(dataChunkMeta);
     }
 
     @RequestMapping(value = "/test2", method = RequestMethod.GET)
-    public DataChunk test2(@RequestParam long id) {
-        return dataChunkStorage.findOne(id);
+    public DataChunkMeta test2(@RequestParam long id) {
+        return dataChunkMetaStorage.findOne(id);
     }
 
     @RequestMapping(value = "/test3", method = RequestMethod.GET)
-    public List<DataChunk> test3() {
-        return dataChunkStorage.findAll();
+    public List<DataChunkMeta> test3() {
+        return dataChunkMetaStorage.findAll();
     }
 
     public static void test4() throws IOException {

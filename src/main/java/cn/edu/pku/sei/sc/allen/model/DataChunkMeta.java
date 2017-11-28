@@ -8,7 +8,7 @@ import javax.persistence.Enumerated;
  * Created by dell on 2017/11/26.
  */
 @Entity
-public class DataChunk extends BaseModel {
+public class DataChunkMeta extends BaseModel {
 
     private long dataSourceId;
 
@@ -35,7 +35,7 @@ public class DataChunk extends BaseModel {
         return dataSourceId;
     }
 
-    public DataChunk setDataSourceId(long dataSourceId) {
+    public DataChunkMeta setDataSourceId(long dataSourceId) {
         this.dataSourceId = dataSourceId;
         return this;
     }
@@ -44,7 +44,7 @@ public class DataChunk extends BaseModel {
         return sql;
     }
 
-    public DataChunk setSql(String sql) {
+    public DataChunkMeta setSql(String sql) {
         this.sql = sql;
         return this;
     }
@@ -53,7 +53,7 @@ public class DataChunk extends BaseModel {
         return idName;
     }
 
-    public DataChunk setIdName(String idName) {
+    public DataChunkMeta setIdName(String idName) {
         this.idName = idName;
         return this;
     }
@@ -62,7 +62,7 @@ public class DataChunk extends BaseModel {
         return tokenName;
     }
 
-    public DataChunk setTokenName(String tokenName) {
+    public DataChunkMeta setTokenName(String tokenName) {
         this.tokenName = tokenName;
         return this;
     }
@@ -71,7 +71,7 @@ public class DataChunk extends BaseModel {
         return valueName;
     }
 
-    public DataChunk setValueName(String valueName) {
+    public DataChunkMeta setValueName(String valueName) {
         this.valueName = valueName;
         return this;
     }
@@ -80,7 +80,7 @@ public class DataChunk extends BaseModel {
         return manifestId;
     }
 
-    public DataChunk setManifestId(String manifestId) {
+    public DataChunkMeta setManifestId(String manifestId) {
         this.manifestId = manifestId;
         return this;
     }
@@ -89,7 +89,7 @@ public class DataChunk extends BaseModel {
         return status;
     }
 
-    public DataChunk setStatus(TaskStatus status) {
+    public DataChunkMeta setStatus(TaskStatus status) {
         this.status = status;
         return this;
     }
@@ -98,7 +98,7 @@ public class DataChunk extends BaseModel {
         return totalInstances;
     }
 
-    public DataChunk setTotalInstances(Integer totalInstances) {
+    public DataChunkMeta setTotalInstances(Integer totalInstances) {
         this.totalInstances = totalInstances;
         return this;
     }
@@ -107,7 +107,7 @@ public class DataChunk extends BaseModel {
         return totalTypes;
     }
 
-    public DataChunk setTotalTypes(Integer totalTypes) {
+    public DataChunkMeta setTotalTypes(Integer totalTypes) {
         this.totalTypes = totalTypes;
         return this;
     }
@@ -116,7 +116,7 @@ public class DataChunk extends BaseModel {
         return totalTokens;
     }
 
-    public DataChunk setTotalTokens(Long totalTokens) {
+    public DataChunkMeta setTotalTokens(Long totalTokens) {
         this.totalTokens = totalTokens;
         return this;
     }
