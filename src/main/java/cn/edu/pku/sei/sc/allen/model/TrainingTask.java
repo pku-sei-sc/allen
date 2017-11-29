@@ -14,9 +14,15 @@ public class TrainingTask extends BaseModel {
     @ElementCollection(fetch = FetchType.EAGER)
     private List<Long> dataChunkIds;
 
+    private String ruleFile;
+
     private int totalTopics;
 
     private double alphaSum;
+
+    private double betaSum;
+
+    private long randomSeed;
 
     private int numIteration;
 
@@ -97,6 +103,33 @@ public class TrainingTask extends BaseModel {
 
     public TrainingTask setShowTopicsNum(int showTopicsNum) {
         this.showTopicsNum = showTopicsNum;
+        return this;
+    }
+
+    public long getRandomSeed() {
+        return randomSeed;
+    }
+
+    public TrainingTask setRandomSeed(long randomSeed) {
+        this.randomSeed = randomSeed;
+        return this;
+    }
+
+    public double getBetaSum() {
+        return betaSum;
+    }
+
+    public TrainingTask setBetaSum(double betaSum) {
+        this.betaSum = betaSum;
+        return this;
+    }
+
+    public String getRuleFile() {
+        return ruleFile;
+    }
+
+    public TrainingTask setRuleFile(String ruleFile) {
+        this.ruleFile = ruleFile;
         return this;
     }
 }

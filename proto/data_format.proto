@@ -38,6 +38,24 @@ message DataChunkPart {
     repeated Instance instances = 1;
 }
 
-message TopicModelMeta {
+//以下是主题模型的训练结果
 
+message Alphabet {
+    repeated string entry = 1;
+}
+
+message MVMATopicModel {
+    int32 numTopics = 1;
+    float alphaSum = 2;
+    float betaSum = 3;
+    int32 numLanguages = 4;
+
+    repeated int32 languageTypeTopicCounts = 5;
+    repeated int32 languageTokensPerTopic = 6;
+    repeated float languageMus = 7;
+    repeated float languageSigma2s = 8;
+    repeated float languageTypeTopicSums = 9;
+    repeated bool hasValue = 10;
+
+    repeated Alphabet alphabets = 11;
 }

@@ -10,6 +10,8 @@ import cn.edu.pku.sei.sc.allen.model.data.DataFormat;
 import cn.edu.pku.sei.sc.allen.storage.DataChunkMetaStorage;
 import cn.edu.pku.sei.sc.allen.storage.SqlDataSourceStorage;
 import cn.edu.pku.sei.sc.allen.util.JdbcUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.scheduling.annotation.Async;
@@ -31,6 +33,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @ConfigurationProperties("allen.input")
 public class InputDataService {
 
+    private static Logger logger = LoggerFactory.getLogger(InputDataService.class);
+
     @Autowired
     private DataSourceService dataSourceService;
 
@@ -46,6 +50,7 @@ public class InputDataService {
 
     private int partSize = 5000;
 
+    //region getter setter
     public String getDataPath() {
         return dataPath;
     }
@@ -63,6 +68,7 @@ public class InputDataService {
         this.partSize = partSize;
         return this;
     }
+    //endregion
 
     @PostConstruct
     private void init() {
@@ -108,21 +114,24 @@ public class InputDataService {
         if (dataChunkMeta.getStatus() != TaskStatus.Stopped && !forced)
             throw new IllegalStateException("无法开始一个非停止状态的任务，尝试强制开始");
 
-        dataChunkMeta.setManifestId(UUID.randomUUID().toString());
-        File manifestFile = new File(getManifestDataPath(dataChunkMeta.getManifestId()));
-
-        while(manifestFile.isFile()) {
-            dataChunkMeta.setManifestId(UUID.randomUUID().toString());
-            manifestFile = new File(getManifestDataPath(dataChunkMeta.getManifestId()));
-        }
-
-        if (!manifestFile.getParentFile().isDirectory() && !manifestFile.getParentFile().mkdir())
-            throw new IllegalStateException("无法创建文件子目录");
-
         long tokenCnt = 0;
         if (progressMap.putIfAbsent(dataChunkId, tokenCnt) != null)
             throw new IllegalStateException("无法重复执行数据导入任务");
         try {
+            logger.info("Start import data id:{}.", dataChunkId);
+
+            dataChunkMeta.setManifestId(UUID.randomUUID().toString());
+            File manifestFile = new File(getManifestDataPath(dataChunkMeta.getManifestId()));
+
+            while (manifestFile.isFile()) {
+                dataChunkMeta.setManifestId(UUID.randomUUID().toString());
+                manifestFile = new File(getManifestDataPath(dataChunkMeta.getManifestId()));
+            }
+
+            if (!manifestFile.getParentFile().isDirectory() && !manifestFile.getParentFile().mkdir()) {
+                throw new IllegalStateException("无法创建文件子目录");
+            }
+
             dataChunkMeta.setStatus(TaskStatus.Processing);
             dataChunkMetaStorage.save(dataChunkMeta);
 
@@ -141,8 +150,9 @@ public class InputDataService {
                     .setIdName(dataChunkMeta.getIdName())
                     .setWordName(dataChunkMeta.getTokenName());
 
-            if (dataChunkMeta.getValueName() != null)
+            if (dataChunkMeta.getValueName() != null) {
                 manifestBuilder.getDataChunkMetaBuilder().setValueName(dataChunkMeta.getValueName());
+            }
 
             manifestBuilder.setPartSize(partSize);
 
@@ -161,10 +171,20 @@ public class InputDataService {
                         int valueColumn = dataChunkMeta.getValueName() == null ?
                                 -1 : resultSet.findColumn(dataChunkMeta.getValueName());
 
+                        long lastTime = System.currentTimeMillis();
+                        long lastRow = 0;
+                        long rowCnt = 0;
+                        long lastToken = 0;
                         while (resultSet.next()) {
+                            rowCnt++;
                             String instanceId = resultSet.getString(idColumn);
                             String token = resultSet.getString(tokenColumn);
                             if (instanceId == null || token == null) continue;
+
+                            instanceId = instanceId.trim();
+                            token = token.trim();
+                            if (instanceId.length() == 0 || token.length() == 0)
+                                continue;
 
                             Float value = null;
 
@@ -176,7 +196,6 @@ public class InputDataService {
                                     continue;
                                 }
                             }
-
 
                             if (!instanceMap.containsKey(instanceId)) {
                                 instanceMap.put(instanceId, DataFormat.Instance.newBuilder());
@@ -195,10 +214,27 @@ public class InputDataService {
                             if (value != null)
                                 tokenBuilder.addValues(value);
                             progressMap.put(dataChunkId, ++tokenCnt);
+                            long elapsedMillis = System.currentTimeMillis() - lastTime;
+                            if (tokenCnt % 200_000 == 0 || elapsedMillis >= 2_000) {
+                                logger.info("Import data id:{}\t read:{}/{}\t quality:{}%\t speed: {} token/s, {} row/s",
+                                        dataChunkId, tokenCnt, rowCnt, String.format("%.2f", ((double) tokenCnt) * 100 / rowCnt),
+                                        (tokenCnt - lastToken) * 1000 / elapsedMillis, (rowCnt - lastRow) * 1000 / elapsedMillis);
+                                lastRow = rowCnt;
+                                lastToken = tokenCnt;
+                                lastTime += elapsedMillis;
+                            }
+                        }
+                        long elapsedMillis = System.currentTimeMillis() - lastTime;
+                        if (rowCnt - lastRow > 0 && tokenCnt - lastToken > 0 && elapsedMillis > 0) {
+                            logger.info("Import data id:{}\t read:{}/{}\t quality:{}%\t speed: {} token/s, {} row/s",
+                                    dataChunkId, tokenCnt, rowCnt, String.format("%.2f", ((double) tokenCnt) * 100 / rowCnt),
+                                    (tokenCnt - lastToken) * 1000 / elapsedMillis, (rowCnt - lastRow) * 1000 / elapsedMillis);
                         }
                     }
                 }
             }
+
+            logger.info("Import data id:{} read finished! Save to file...", dataChunkId);
 
             //排序、划分数据
             List<String> instanceIds = new ArrayList<>();
@@ -266,6 +302,7 @@ public class InputDataService {
                     .setTotalTokens(tokenCnt);
 
             dataChunkMetaStorage.save(dataChunkMeta);
+            logger.info("Import data id:{} finished!", dataChunkId);
         } finally {
             progressMap.remove(dataChunkId);
         }

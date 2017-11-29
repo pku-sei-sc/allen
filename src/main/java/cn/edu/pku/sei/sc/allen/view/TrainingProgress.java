@@ -5,18 +5,18 @@ package cn.edu.pku.sei.sc.allen.view;
  */
 public class TrainingProgress {
 
-    private int finishedIteration;
+    private int currentIteration;
 
     private int maxIteration;
 
     private long totalCost;
 
-    public int getFinishedIteration() {
-        return finishedIteration;
+    public int getCurrentIteration() {
+        return currentIteration;
     }
 
-    public TrainingProgress setFinishedIteration(int finishedIteration) {
-        this.finishedIteration = finishedIteration;
+    public TrainingProgress setCurrentIteration(int currentIteration) {
+        this.currentIteration = currentIteration;
         return this;
     }
 

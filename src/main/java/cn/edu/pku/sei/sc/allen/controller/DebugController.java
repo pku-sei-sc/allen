@@ -75,9 +75,84 @@ public class DebugController {
         System.out.println(test.getName());
     }
 
+    private static int MAXN = 10_000_000;
+
+    public static void test6() {
+
+        float[] vals = new float[MAXN];
+        for (int i = 0; i < MAXN; i++)
+            vals[i] = i;
+
+        //burnIn
+        for (int i = 0; i < 100; i++) {
+            float tmp = 0;
+            for (int j = 0; j < MAXN; j++) {
+                tmp += vals[j] * tmp;
+            }
+        }
+
+        //speed test
+        for (int k = 0; k < 10; k++) {
+            long start = System.currentTimeMillis();
+            for (int i = 0; i < 100; i++) {
+                float tmp = 0;
+                for (int j = 0; j < MAXN; j++) {
+                    tmp += vals[j] / tmp;
+                }
+            }
+            System.out.println("Cost:" + (System.currentTimeMillis() - start) + "ms.");
+        }
+
+        //memory test
+        for (int i = 0; i < MAXN; i++) {
+            vals = new float[MAXN];
+            for (int j = 0; j < MAXN; j++) {
+                vals[i] = j;
+            }
+        }
+
+    }
+
+    public static void test7() {
+
+        double[] vals = new double[MAXN];
+        for (int i = 0; i < MAXN; i++)
+            vals[i] = i;
+
+        //burnIn
+        for (int i = 0; i < 100; i++) {
+            double tmp = 0;
+            for (int j = 0; j < MAXN; j++) {
+                tmp += vals[j] * tmp;
+            }
+        }
+
+        //speed test
+        for (int k = 0; k < 10; k++) {
+            long start = System.currentTimeMillis();
+            for (int i = 0; i < 100; i++) {
+                double tmp = 0;
+                for (int j = 0; j < MAXN; j++) {
+                    tmp += vals[j] / tmp;
+                }
+            }
+            System.out.println("Cost:" + (System.currentTimeMillis() - start) + "ms.");
+        }
+
+        //memory test
+        for (int i = 0; i < MAXN; i++) {
+            vals = new double[MAXN];
+            for (int j = 0; j < MAXN; j++) {
+                vals[i] = j;
+            }
+        }
+
+    }
+
     public static void main(String[] args) throws IOException {
-        test4();
-        test5();
+//        test4();
+//        test5();
+        test6();
     }
 
 

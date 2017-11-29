@@ -1,10 +1,12 @@
 package cn.edu.pku.sei.sc.allen.algorithm;
 
 import cc.mallet.topics.MVMATopicModel;
+import cc.mallet.types.Alphabet;
 import cc.mallet.types.FeatureSequence;
 import cc.mallet.types.Instance;
 import cc.mallet.types.InstanceList;
 import cn.edu.pku.sei.sc.allen.model.DataChunk;
+import cn.edu.pku.sei.sc.allen.model.Rule;
 import cn.edu.pku.sei.sc.allen.model.data.DataFormat;
 
 import java.util.*;
@@ -21,6 +23,10 @@ public class TopicModel {
 
     private double alphaSum;
 
+    private double betaSum;
+
+    private long randomSeed;
+
     private int numIteration;
 
     private int showTopicsInterval;
@@ -29,21 +35,24 @@ public class TopicModel {
 
     private InstanceList[] instanceLists;
 
-    private ArrayList<double[]>[] valueList;
+    private ArrayList<float[]>[] valueList;
 
     private MVMATopicModel mvmaTopicModel;
 
-    public TopicModel(long taskId, int totalTopics, double alphaSum, int numIteration, int showTopicsInterval, int showTopicsNum) {
+    public TopicModel(long taskId, int totalTopics, double alphaSum, double betaSum, long randomSeed, int numIteration, int showTopicsInterval, int showTopicsNum) {
         this.taskId = taskId;
         this.totalTopics = totalTopics;
         this.alphaSum = alphaSum;
+        this.betaSum = betaSum;
+        this.randomSeed = randomSeed;
         this.numIteration = numIteration;
         this.showTopicsInterval = showTopicsInterval;
         this.showTopicsNum = showTopicsNum;
     }
 
     @SuppressWarnings("unchecked")
-    public void loadDataChunks(List<DataChunk> dataChunks) {
+    public void loadDataChunks(List<DataChunk> dataChunks, Rule rule) {
+        //不同视图下实例求交集
         Set<Object> commonInstanceIds = new TreeSet<>(Arrays.asList(dataChunks.get(0).getInstanceAlphabet().toArray()));
         for (DataChunk dataChunk : dataChunks) {
             Set<Object> tempInstanceIds = new HashSet<>(Arrays.asList(dataChunk.getInstanceAlphabet().toArray()));
@@ -56,7 +65,15 @@ public class TopicModel {
         //视图循环
         for (int i = 0; i < dataChunks.size(); i++) {
             DataChunk dataChunk = dataChunks.get(i);
-            instanceLists[i] = new InstanceList(dataChunk.getTokenAlphabet(), null);
+            long dataChunkId = dataChunk.getMeta().getId();
+
+            Alphabet alphabet = new Alphabet(String.class);
+
+            Set<String> stopWordSet = new HashSet<>();
+            for (String stopWord : rule.getStopWords(dataChunkId))
+                stopWordSet.add(stopWord.trim().toLowerCase());
+
+            instanceLists[i] = new InstanceList(alphabet, null);
             valueList[i] = new ArrayList<>();
 
             //公有实例循环
@@ -68,16 +85,19 @@ public class TopicModel {
                 for (DataFormat.Token token : dataInstance.getTokensList())
                     tokenCount += token.getCount();
 
-                FeatureSequence featureSequence = new FeatureSequence(dataChunk.getTokenAlphabet(), tokenCount);
-                double[] values = new double[tokenCount];
-
-
+                FeatureSequence featureSequence = new FeatureSequence(alphabet, tokenCount);
+                float[] values = new float[tokenCount];
 
                 //加载词语和属性值
                 tokenCount = 0;
                 for (DataFormat.Token token : dataInstance.getTokensList()) {
+                    Object entry = dataChunk.getTokenAlphabet().lookupObject(token.getType());
+                    entry = rule.getSynonym(dataChunkId, (String) entry); //同义词替换
+                    if (stopWordSet.contains(((String) entry).toLowerCase())) continue; //去除停用词
+
+                    int type = alphabet.lookupIndex(entry);
                     for (int j = 0; j < token.getCount(); j++) {
-                        featureSequence.add(token.getType());
+                        featureSequence.add(type);
                         if (dataChunk.hasValue())
                             values[tokenCount++] = token.getValues(j);
                     }
@@ -90,11 +110,17 @@ public class TopicModel {
     }
 
     public void training() {
-        mvmaTopicModel = new MVMATopicModel(totalTopics, alphaSum, taskId);
+        mvmaTopicModel = new MVMATopicModel(totalTopics, (float) alphaSum, (float) betaSum, randomSeed, taskId);
+
+        mvmaTopicModel.addTrainingInstances(instanceLists, valueList);
         mvmaTopicModel.setNumIterations(numIteration);
         mvmaTopicModel.setTopicDisplay(showTopicsInterval, showTopicsNum);
-        mvmaTopicModel.addInstancesWithValues(instanceLists, valueList);
-        mvmaTopicModel.estimate();
+        mvmaTopicModel.training();
+    }
+
+    public DataFormat.MVMATopicModel getModel() {
+        checkMVMATopicModel();
+        return mvmaTopicModel.storeModel();
     }
 
     private void checkMVMATopicModel() {
@@ -102,7 +128,7 @@ public class TopicModel {
             throw new IllegalStateException("还未开始训练");
     }
 
-    public int getFinishedIteration() {
+    public int getCurrentIteration() {
         checkMVMATopicModel();
         return mvmaTopicModel.getIterationSoFar();
     }
