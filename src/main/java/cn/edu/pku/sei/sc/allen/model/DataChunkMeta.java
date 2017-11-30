@@ -1,8 +1,7 @@
 package cn.edu.pku.sei.sc.allen.model;
 
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
+import javax.persistence.*;
+import java.util.List;
 
 /**
  * Created by dell on 2017/11/26.
@@ -12,7 +11,8 @@ public class DataChunkMeta extends BaseModel {
 
     private long dataSourceId;
 
-    private String sql;
+    @ElementCollection(fetch = FetchType.EAGER)
+    private List<String> sqls;
 
     private String idName;
 
@@ -40,12 +40,12 @@ public class DataChunkMeta extends BaseModel {
         return this;
     }
 
-    public String getSql() {
-        return sql;
+    public List<String> getSqls() {
+        return sqls;
     }
 
-    public DataChunkMeta setSql(String sql) {
-        this.sql = sql;
+    public DataChunkMeta setSqls(List<String> sqls) {
+        this.sqls = sqls;
         return this;
     }
 

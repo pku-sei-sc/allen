@@ -267,7 +267,7 @@ public class MVMATopicModel {
             long elapsedMillis = System.currentTimeMillis() - iterationStart;
             totalTime += elapsedMillis;
 
-            float progress = iterationsSoFar * 100 / maxIteration;
+            float progress = (float) iterationsSoFar * 100 / maxIteration;
 
             if (iterationsSoFar % 50 == 0) {
                 float ll = modelLogLikelihood();
@@ -276,7 +276,7 @@ public class MVMATopicModel {
                         totalTime / iterationsSoFar, totalTime / 1000,
                         totalTime * (maxIteration - iterationsSoFar) / iterationsSoFar / 1000);
                 log.info("Training task id:{}\tmodel log likelihood:{}", taskId, String.format("%.4f", ll));
-            } else if (iterationsSoFar % 10 == 0) {
+            } else if (iterationsSoFar % 10 == 0 || elapsedMillis > 1000) {
                 log.info("Training task id:{}\titeration:{}/{}\tprogress:{}%\tlast:{}ms\taverage:{}ms\ttotal:{}s\tremaining:{}s",
                         taskId, iterationsSoFar, maxIteration, String.format("%.1f", progress), elapsedMillis,
                         totalTime / iterationsSoFar, totalTime / 1000,
@@ -291,7 +291,7 @@ public class MVMATopicModel {
             if (showTopicsInterval != 0 && iterationsSoFar != 0 && iterationsSoFar % showTopicsInterval == 0) {
                 ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
                 PrintStream printStream = new PrintStream(byteArrayOutputStream);
-                printStream.println("Training task id:" + taskId + "\tTop words:");
+                printStream.println("Training task id:" + taskId + "\titeration:"+ iterationsSoFar +"/"+ maxIteration +"\tTop words:");
                 printTopWords(printStream, wordsPerTopic, false);
                 log.info(byteArrayOutputStream.toString());
             }

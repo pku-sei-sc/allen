@@ -1,5 +1,6 @@
 package cn.edu.pku.sei.sc.allen.controller;
 
+import cn.edu.pku.sei.sc.allen.lang.BadRequestException;
 import cn.edu.pku.sei.sc.allen.model.DataChunkMeta;
 import cn.edu.pku.sei.sc.allen.model.SqlDataSource;
 import cn.edu.pku.sei.sc.allen.service.DataSourceService;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.sql.SQLException;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -53,11 +55,16 @@ public class InputDataController {
 
     @RequestMapping(value = "/data", method = RequestMethod.POST)
     public DataChunkMeta inputData(@RequestParam long dataSourceId,
-                                   @RequestParam String sql,
+                                   @RequestParam(required = false) String sql,
+                                   @RequestParam(required = false, defaultValue = "") List<String> sqls,
                                    @RequestParam String idName,
                                    @RequestParam String tokenName,
                                    @RequestParam(required = false) String valueName) {
-        return inputDataService.createDataChunk(dataSourceId, sql, idName, tokenName, valueName);
+        if (sqls.size() == 0 && sql == null)
+            throw new BadRequestException("SQL语句缺失");
+        if (sqls.size() == 0)
+            sqls = Collections.singletonList(sql);
+        return inputDataService.createDataChunk(dataSourceId, sqls, idName, tokenName, valueName);
     }
 
     @RequestMapping(value = "/data", method = RequestMethod.GET)

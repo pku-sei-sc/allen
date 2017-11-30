@@ -79,12 +79,12 @@ public class InputDataService {
             throw new IllegalStateException("无法创建data目录，请手动创建目录后重试");
     }
 
-    public DataChunkMeta createDataChunk(long dataSourceId, String sql, String idName, String tokenName, String valueName) {
+    public DataChunkMeta createDataChunk(long dataSourceId, List<String> sqls, String idName, String tokenName, String valueName) {
         if (!dataSourceService.testSqlDataSource(dataSourceId))
             throw new IllegalStateException("数据源连接失败");
         DataChunkMeta dataChunkMeta = new DataChunkMeta()
                 .setDataSourceId(dataSourceId)
-                .setSql(sql)
+                .setSqls(sqls)
                 .setIdName(idName)
                 .setTokenName(tokenName)
                 .setValueName(valueName)
@@ -146,7 +146,7 @@ public class InputDataService {
                     .setPassword(sqlDataSource.getPassword());
 
             manifestBuilder.getDataChunkMetaBuilder()
-                    .setSql(dataChunkMeta.getSql())
+                    .addAllSqls(dataChunkMeta.getSqls())
                     .setIdName(dataChunkMeta.getIdName())
                     .setWordName(dataChunkMeta.getTokenName());
 
@@ -162,75 +162,79 @@ public class InputDataService {
             Set<String> tokenSet = new HashSet <>();
 
             try (Connection connection = JdbcUtil.getConnection(sqlDataSource)) {
-                try (PreparedStatement preparedStatement = connection.prepareStatement(dataChunkMeta.getSql())) {
-                    if (sqlDataSource.getUrl().toLowerCase().contains("mysql")) //mysql特殊处理
-                        preparedStatement.setFetchSize(Integer.MIN_VALUE);
-                    try (ResultSet resultSet = preparedStatement.executeQuery()) {
-                        int idColumn = resultSet.findColumn(dataChunkMeta.getIdName());
-                        int tokenColumn = resultSet.findColumn(dataChunkMeta.getTokenName());
-                        int valueColumn = dataChunkMeta.getValueName() == null ?
-                                -1 : resultSet.findColumn(dataChunkMeta.getValueName());
+                long lastTime = System.currentTimeMillis();
+                long lastRow = 0;
+                long rowCnt = 0;
+                long lastToken = 0;
 
-                        long lastTime = System.currentTimeMillis();
-                        long lastRow = 0;
-                        long rowCnt = 0;
-                        long lastToken = 0;
-                        while (resultSet.next()) {
-                            rowCnt++;
-                            String instanceId = resultSet.getString(idColumn);
-                            String token = resultSet.getString(tokenColumn);
-                            if (instanceId == null || token == null) continue;
+                for (String sql : dataChunkMeta.getSqls()) {
+                    try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
+                        if (sqlDataSource.getUrl().toLowerCase().contains("mysql")) //mysql特殊处理
+                            preparedStatement.setFetchSize(Integer.MIN_VALUE);
+                        try (ResultSet resultSet = preparedStatement.executeQuery()) {
+                            int idColumn = resultSet.findColumn(dataChunkMeta.getIdName());
+                            int tokenColumn = resultSet.findColumn(dataChunkMeta.getTokenName());
+                            int valueColumn = dataChunkMeta.getValueName() == null ?
+                                    -1 : resultSet.findColumn(dataChunkMeta.getValueName());
 
-                            instanceId = instanceId.trim();
-                            token = token.trim();
-                            if (instanceId.length() == 0 || token.length() == 0)
-                                continue;
+                            while (resultSet.next()) {
+                                rowCnt++;
+                                String instanceId = resultSet.getString(idColumn);
+                                String token = resultSet.getString(tokenColumn);
+                                if (instanceId == null || token == null) continue;
 
-                            Float value = null;
-
-                            if (dataChunkMeta.getValueName() != null) {
-                                String valueStr = resultSet.getString(valueColumn);
-                                try {
-                                    value = Float.parseFloat(valueStr);
-                                } catch (Exception e) {
+                                instanceId = instanceId.trim();
+                                token = token.trim();
+                                if (instanceId.length() == 0 || token.length() == 0)
                                     continue;
+
+                                Float value = null;
+
+                                if (dataChunkMeta.getValueName() != null) {
+                                    String valueStr = resultSet.getString(valueColumn);
+                                    try {
+                                        value = Float.parseFloat(valueStr);
+                                    } catch (Exception e) {
+                                        continue;
+                                    }
+                                }
+
+                                if (!instanceMap.containsKey(instanceId)) {
+                                    instanceMap.put(instanceId, DataFormat.Instance.newBuilder());
+                                    instanceTokenMap.put(instanceId, new HashMap<>());
+                                }
+
+                                if (!instanceTokenMap.get(instanceId).containsKey(token)) {
+                                    DataFormat.Token.Builder builder = DataFormat.Token.newBuilder();
+                                    instanceTokenMap.get(instanceId).put(token, builder);
+                                    tokenSet.add(token);
+                                }
+
+                                DataFormat.Token.Builder tokenBuilder = instanceTokenMap.get(instanceId).get(token);
+                                int count = tokenBuilder.getCount();
+                                tokenBuilder.setCount(count + 1);
+                                if (value != null)
+                                    tokenBuilder.addValues(value);
+                                progressMap.put(dataChunkId, ++tokenCnt);
+                                long elapsedMillis = System.currentTimeMillis() - lastTime;
+                                if (tokenCnt % 200_000 == 0 || elapsedMillis >= 2_000) {
+                                    if (rowCnt != 0 && elapsedMillis != 0)
+                                        logger.info("Import data id:{}\t read:{}/{}\t quality:{}%\t speed: {} token/s, {} row/s",
+                                                dataChunkId, tokenCnt, rowCnt, String.format("%.2f", ((double) tokenCnt) * 100 / rowCnt),
+                                                (tokenCnt - lastToken) * 1000 / elapsedMillis, (rowCnt - lastRow) * 1000 / elapsedMillis);
+                                    lastRow = rowCnt;
+                                    lastToken = tokenCnt;
+                                    lastTime += elapsedMillis;
                                 }
                             }
-
-                            if (!instanceMap.containsKey(instanceId)) {
-                                instanceMap.put(instanceId, DataFormat.Instance.newBuilder());
-                                instanceTokenMap.put(instanceId, new HashMap<>());
-                            }
-
-                            if (!instanceTokenMap.get(instanceId).containsKey(token)) {
-                                DataFormat.Token.Builder builder = DataFormat.Token.newBuilder();
-                                instanceTokenMap.get(instanceId).put(token, builder);
-                                tokenSet.add(token);
-                            }
-
-                            DataFormat.Token.Builder tokenBuilder = instanceTokenMap.get(instanceId).get(token);
-                            int count = tokenBuilder.getCount();
-                            tokenBuilder.setCount(count + 1);
-                            if (value != null)
-                                tokenBuilder.addValues(value);
-                            progressMap.put(dataChunkId, ++tokenCnt);
-                            long elapsedMillis = System.currentTimeMillis() - lastTime;
-                            if (tokenCnt % 200_000 == 0 || elapsedMillis >= 2_000) {
-                                logger.info("Import data id:{}\t read:{}/{}\t quality:{}%\t speed: {} token/s, {} row/s",
-                                        dataChunkId, tokenCnt, rowCnt, String.format("%.2f", ((double) tokenCnt) * 100 / rowCnt),
-                                        (tokenCnt - lastToken) * 1000 / elapsedMillis, (rowCnt - lastRow) * 1000 / elapsedMillis);
-                                lastRow = rowCnt;
-                                lastToken = tokenCnt;
-                                lastTime += elapsedMillis;
-                            }
-                        }
-                        long elapsedMillis = System.currentTimeMillis() - lastTime;
-                        if (rowCnt - lastRow > 0 && tokenCnt - lastToken > 0 && elapsedMillis > 0) {
-                            logger.info("Import data id:{}\t read:{}/{}\t quality:{}%\t speed: {} token/s, {} row/s",
-                                    dataChunkId, tokenCnt, rowCnt, String.format("%.2f", ((double) tokenCnt) * 100 / rowCnt),
-                                    (tokenCnt - lastToken) * 1000 / elapsedMillis, (rowCnt - lastRow) * 1000 / elapsedMillis);
                         }
                     }
+                }
+                long elapsedMillis = System.currentTimeMillis() - lastTime;
+                if (rowCnt - lastRow > 0 && tokenCnt - lastToken > 0 && elapsedMillis > 0) {
+                    logger.info("Import data id:{}\t read:{}/{}\t quality:{}%\t speed: {} token/s, {} row/s",
+                            dataChunkId, tokenCnt, rowCnt, String.format("%.2f", ((double) tokenCnt) * 100 / rowCnt),
+                            (tokenCnt - lastToken) * 1000 / elapsedMillis, (rowCnt - lastRow) * 1000 / elapsedMillis);
                 }
             }
 

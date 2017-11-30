@@ -11,7 +11,7 @@ message SqlDataSource {
 
 message DataChunkMeta {
     SqlDataSource dataSource = 1;
-    string sql = 2;
+    repeated string sqls = 2;
     string idName = 3;
     string wordName = 4;
     string valueName = 5;

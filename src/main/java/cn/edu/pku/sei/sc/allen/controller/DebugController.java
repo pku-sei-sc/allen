@@ -26,17 +26,6 @@ public class DebugController {
     @Autowired
     private DataChunkMetaStorage dataChunkMetaStorage;
 
-    @RequestMapping(value = "/test1", method = RequestMethod.POST)
-    public DataChunkMeta test1() {
-        DataChunkMeta dataChunkMeta = new DataChunkMeta();
-        dataChunkMeta.setDataSourceId(1)
-                .setSql("select 1")
-                .setIdName("id")
-                .setTokenName("word")
-                .setStatus(TaskStatus.Stopped);
-        return dataChunkMetaStorage.save(dataChunkMeta);
-    }
-
     @RequestMapping(value = "/test2", method = RequestMethod.GET)
     public DataChunkMeta test2(@RequestParam long id) {
         return dataChunkMetaStorage.findOne(id);
