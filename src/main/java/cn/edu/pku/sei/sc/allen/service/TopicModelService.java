@@ -21,6 +21,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Created by dell on 2017/11/27.
@@ -91,7 +92,7 @@ public class TopicModelService {
     }
 
     @Async
-    public void startTraining(long trainingTaskId, boolean forced) throws IOException {
+    public void startTraining(long trainingTaskId, boolean forced) throws IOException, ExecutionException, InterruptedException {
         TrainingTask trainingTask = trainingTaskStorage.findOne(trainingTaskId);
 
         //检查数据可用性

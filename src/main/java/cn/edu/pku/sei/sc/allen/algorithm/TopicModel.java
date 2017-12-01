@@ -10,6 +10,7 @@ import cn.edu.pku.sei.sc.allen.model.Rule;
 import cn.edu.pku.sei.sc.allen.model.data.DataFormat;
 
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 
 /**
  * 默认是MVMALDA算法
@@ -113,8 +114,8 @@ public class TopicModel {
         }
     }
 
-    public void training() {
-        mvmaTopicModel = new MVMATopicModel(totalTopics, (float) alphaSum, (float) betaSum, randomSeed, taskId);
+    public void training() throws ExecutionException, InterruptedException {
+        mvmaTopicModel = new MVMATopicModel(totalTopics, (float) alphaSum, (float) betaSum, randomSeed, 24, taskId);
 
         mvmaTopicModel.addTrainingInstances(instanceLists, valueList);
         mvmaTopicModel.setNumIterations(numIteration);

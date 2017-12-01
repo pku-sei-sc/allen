@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Created by dell on 2017/11/26.
@@ -50,7 +51,7 @@ public class TopicModelController {
 
     @RequestMapping(value = "/training/{trainingTaskId}/start", method = RequestMethod.POST)
     public void startTraining(@PathVariable long trainingTaskId,
-                              @RequestParam(required = false, defaultValue = "false") boolean forced) throws IOException {
+                              @RequestParam(required = false, defaultValue = "false") boolean forced) throws IOException, ExecutionException, InterruptedException {
         topicModelService.startTraining(trainingTaskId, forced);
     }
 

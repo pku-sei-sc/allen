@@ -14,6 +14,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.TreeSet;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicIntegerArray;
 
 /**
  * 最多训练一次，但可以多次Inference
@@ -38,8 +40,8 @@ public class MVMATopicModel {
     private float betaSum;
     private int numLanguages;
 
-    private int[][][] languageTypeTopicCounts;
-    private int[][] languageTokensPerTopic;
+    private AtomicIntegerArray[][] languageTypeTopicCounts;
+    private AtomicIntegerArray[] languageTokensPerTopic;
     private float[][] languageMus;
     private float[][] languageSigma2s;
     private float[][][] languageTypeTopicSums;
@@ -55,10 +57,24 @@ public class MVMATopicModel {
 
 
     //需要设置为ThreadLocal
-    private transient float[] topicTermScores;
-    private transient int[] localTopicCounts;
-    private transient float[] localSigma2s;
-    private transient float[] localPowers;
+
+    private int numThreads;
+    private ExecutorService executorService;
+
+    private Future<Void>[] futures;
+
+//    private BlockingQueue<float[]> topicTermScoresQueue;
+//    private BlockingQueue<int[]> localTopicCountsQueue;
+//    private BlockingQueue<float[]> localSigma2sQueue;
+//    private BlockingQueue<float[]> localPowersQueue;
+
+    private transient float[][] topicTermScores;
+    private transient int[][] localTopicCounts;
+    private transient float[][] localSigma2s;
+    private transient float[][] localPowers;
+//    private transient Randoms[] random;
+//
+//    private transient ThreadLocalRandom random;
 
     private transient LabelAlphabet topicAlphabet;
 
@@ -73,7 +89,6 @@ public class MVMATopicModel {
     private transient int wordsPerTopic;
 
     private transient long randomSeed;
-    private transient Randoms random;
 
     private transient NumberFormat formatter;
     //用时查询
@@ -115,11 +130,12 @@ public class MVMATopicModel {
 
     //endregion
 
-    public MVMATopicModel(int numTopics, float alphaSum, float betaSum, long randomSeed, long taskId) {
+    public MVMATopicModel(int numTopics, float alphaSum, float betaSum, long randomSeed, int numThreads, long taskId) {
         this.numTopics = numTopics;
         this.alphaSum = alphaSum;
         this.betaSum = betaSum;
         this.randomSeed = randomSeed;
+        this.numThreads = numThreads;
         this.taskId = taskId;
         
         this.trainingData = new ArrayList<>();
@@ -129,30 +145,53 @@ public class MVMATopicModel {
         
         this.alphas = new float[numTopics];
         Arrays.fill(alphas, alphaSum / numTopics);
-        
-        this.random = new Randoms((int) randomSeed);
+
+//        this.random = new Randoms[numThreads];
+//        for (int i = 0; i < numThreads; i++)
+//            this.random[i] = new Randoms();
+
+//        this.random =
+
+        if (numThreads > 1)
+            log.warn("Model can't get stable result when use parallel accelerating.");
+//        else
+//            random[0] = new Randoms((int) randomSeed);
         
         formatter = NumberFormat.getInstance();
         formatter.setMaximumFractionDigits(5);
 
-        this.topicTermScores = new float[numTopics];
-        this.localTopicCounts = new int[numTopics];
-        this.localSigma2s = new float[numTopics];
-        this.localPowers = new float[numTopics];
+        this.executorService = Executors.newFixedThreadPool(numThreads);
+        this.futures = new Future[numThreads];
+//        int ratio = 4;
+//        topicTermScoresQueue = new ArrayBlockingQueue<>(ratio * numThreads);
+//        localTopicCountsQueue = new ArrayBlockingQueue<>(ratio * numThreads);
+//        localSigma2sQueue = new Arr
+//
+//        for (int i = 0; i < ratio * numThreads; i++) {
+//            topicTermScoresQueue.add(new float[numTopics]);
+//        }
+
+        this.topicTermScores = new float[numThreads][numTopics];
+        this.localTopicCounts = new int[numThreads][numTopics];
+        this.localSigma2s = new float[numThreads][numTopics];
+        this.localPowers = new float[numThreads][numTopics];
     }
 
     public void addTrainingInstances(InstanceList[] training, ArrayList<float[]>[] valueList) {
         realFeatures = valueList;
         numLanguages = training.length;
 
-        languageTokensPerTopic = new int[numLanguages][numTopics];
+        languageTokensPerTopic = new AtomicIntegerArray[numLanguages];
+        for (int i = 0; i < languageTokensPerTopic.length; i++)
+            languageTokensPerTopic[i] = new AtomicIntegerArray(numTopics);
+
 
         alphabets = new Alphabet[numLanguages];
         vocabularySizes = new int[numLanguages];
         betas = new float[numLanguages];
         betaSums = new float[numLanguages];
 
-        languageTypeTopicCounts = new int[numLanguages][][];
+        languageTypeTopicCounts = new AtomicIntegerArray[numLanguages][];
         languageTypeTopicSums = new float[numLanguages][][];
         languageMus = new float[numLanguages][];
         languageSigma2s = new float[numLanguages][];
@@ -179,7 +218,10 @@ public class MVMATopicModel {
             betaSums[language] = betaSum;
 
             int[] typeTotals = new int[vocabularySizes[language]];
-            languageTypeTopicCounts[language] = new int[vocabularySizes[language]][numTopics];
+            languageTypeTopicCounts[language] = new AtomicIntegerArray[vocabularySizes[language]];
+
+            for (int i = 0; i < languageTypeTopicCounts[language].length; i++)
+                languageTypeTopicCounts[language][i] = new AtomicIntegerArray(numTopics);
 
             if (valueList[language] != null) {
                 hasValue[language] = true;
@@ -210,7 +252,7 @@ public class MVMATopicModel {
 
             for (int language = 0; language < numLanguages; language++) {
 
-                int[] tokensPerTopic = languageTokensPerTopic[language];
+                AtomicIntegerArray tokensPerTopic = languageTokensPerTopic[language];
 
                 instances[language] = training[language].get(doc);
                 FeatureSequence tokens = (FeatureSequence) instances[language].getData();
@@ -223,12 +265,12 @@ public class MVMATopicModel {
 
                     int type = tokens.getIndexAtPosition(position);
 
-                    int topic = random.nextInt(numTopics);
+                    int topic = ThreadLocalRandom.current().nextInt(numTopics);
 
                     topics[position] = topic;
-                    tokensPerTopic[topic]++;
+                    tokensPerTopic.incrementAndGet(topic);
 
-                    languageTypeTopicCounts[language][type][topic] ++;
+                    languageTypeTopicCounts[language][type].incrementAndGet(topic);
                     if (hasValue[language]) {
                         float value = valueList[language].get(doc)[position];
 
@@ -256,11 +298,12 @@ public class MVMATopicModel {
         }
     }
 
-    public void training() {
+    public void training() throws ExecutionException, InterruptedException {
         training(numIterations);
     }
 
-    public void training(int iterationsThisRound) {
+    @SuppressWarnings("unchecked")
+    public void training(int iterationsThisRound) throws ExecutionException, InterruptedException {
         if (trainingData.size() == 0)
             throw new IllegalStateException("未添加训练实例，无法开始训练!");
 
@@ -273,8 +316,11 @@ public class MVMATopicModel {
         for ( ; iterationsSoFar <= maxIteration; iterationsSoFar++) {
             long iterationStart = System.currentTimeMillis();
 
-            for (int doc = 0; doc < trainingData.size(); doc++)
-                sampleTopicsForOneDoc (trainingData.get(doc), doc);
+            for (int threadId = 0; threadId < numThreads; threadId++)
+                futures[threadId] = (Future<Void>) executorService.submit(new SampleRunner(threadId));
+
+            for (int threadId = 0; threadId < numThreads; threadId++)
+                futures[threadId].get();
 
             long elapsedMillis = System.currentTimeMillis() - iterationStart;
             totalTime += elapsedMillis;
@@ -312,8 +358,27 @@ public class MVMATopicModel {
         log.info("Training task id:{} iteration finished! Average cost:{}ms, total cost:{}s.", taskId, totalTime / maxIteration, totalTime / 1000);
     }
 
-    private void sampleTopicsForOneDoc (TopicAssignment topicAssignment, int docIndex) {
-        int[] currentTypeTopicCounts;
+    private class SampleRunner implements Runnable {
+
+        private int threadId;
+
+        public SampleRunner(int threadId) {
+            this.threadId = threadId;
+        }
+
+        @Override
+        public void run() {
+            for (int doc = threadId; doc < trainingData.size(); doc+= numThreads)
+                sampleTopicsForOneDoc (trainingData.get(doc), doc, threadId);
+        }
+    }
+
+    private void sampleTopicsForOneDoc (TopicAssignment topicAssignment, int docIndex, int threadId) {
+        float[] topicTermScores = this.topicTermScores[threadId];
+        int[] localTopicCounts = this.localTopicCounts[threadId];
+        float[] localSigma2s = this.localSigma2s[threadId];
+        float[] localPowers = this.localPowers[threadId];
+
         int type, oldTopic, newTopic;
         float value = 0;
 
@@ -337,8 +402,8 @@ public class MVMATopicModel {
             FeatureSequence tokenSequence =
                     (FeatureSequence) topicAssignment.instances[language].getData();
 
-            int[][] typeTopicCounts = languageTypeTopicCounts[language];
-            int[] tokensPerTopic = languageTokensPerTopic[language];
+            AtomicIntegerArray[] typeTopicCounts = languageTypeTopicCounts[language];
+            AtomicIntegerArray tokensPerTopic = languageTokensPerTopic[language];
             float beta = betas[language];
             float betaSum = betaSums[language];
 
@@ -351,14 +416,16 @@ public class MVMATopicModel {
                 mus = languageMus[language];
             }
 
+            AtomicIntegerArray currentTypeTopicCounts;
+
             for (int position = 0; position < docLength; position++) {
                 type = tokenSequence.getIndexAtPosition(position);
                 oldTopic = oneDocTopics[position];
                 currentTypeTopicCounts = typeTopicCounts[type];
 
                 localTopicCounts[oldTopic] --;
-                tokensPerTopic[oldTopic] --;
-                currentTypeTopicCounts[oldTopic] --;
+                tokensPerTopic.decrementAndGet(oldTopic);
+                currentTypeTopicCounts.decrementAndGet(oldTopic);
 
                 float regu = 0;
 //                float[] localSigma2s = null;
@@ -374,8 +441,8 @@ public class MVMATopicModel {
                     if (languageSigma2s[language][type] != 0) {
                         float logMax = Float.NEGATIVE_INFINITY;
                         for (int topic = 0; topic < numTopics; topic++) {
-                            float tmpMu = (mus[type] + typeTopicSums[type][topic]) / (1 + currentTypeTopicCounts[topic]);
-                            localSigma2s[topic] = languageSigma2s[language][type] / (1 + currentTypeTopicCounts[topic]);
+                            float tmpMu = (mus[type] + typeTopicSums[type][topic]) / (1 + currentTypeTopicCounts.get(topic));
+                            localSigma2s[topic] = languageSigma2s[language][type] / (1 + currentTypeTopicCounts.get(topic));
                             localPowers[topic] = -(value - tmpMu) * (value - tmpMu) / (2 * localSigma2s[topic]);
                             if (localPowers[topic] > logMax) {
                                 logMax = localPowers[topic];
@@ -390,8 +457,8 @@ public class MVMATopicModel {
                 for (int topic = 0; topic < numTopics; topic++) {
                     score =
                             (alphas[topic] + localTopicCounts[topic]) *
-                                    ((beta + currentTypeTopicCounts[topic]) /
-                                            (betaSum + tokensPerTopic[topic]));
+                                    ((beta + currentTypeTopicCounts.get(topic)) /
+                                            (betaSum + tokensPerTopic.get(topic)));
 
                     if (hasValue[language] && languageSigma2s[language][type] != 0) {
                         float normalFactor = 1 / (float) Math.sqrt(localSigma2s[topic]);
@@ -403,7 +470,8 @@ public class MVMATopicModel {
                     topicTermScores[topic] = score;
                 }
 
-                float sample =  (float) random.nextUniform() * sum;
+//                float sample =  (float) random[threadId].nextUniform() * sum;
+                float sample = (1.0f - ThreadLocalRandom.current().nextFloat()) * sum;
 
                 // Figure out which topic contains that point
                 newTopic = -1;
@@ -422,8 +490,8 @@ public class MVMATopicModel {
                 // Put that new topic into the counts
                 oneDocTopics[position] = newTopic;
                 localTopicCounts[newTopic]++;
-                tokensPerTopic[newTopic]++;
-                currentTypeTopicCounts[newTopic]++;
+                tokensPerTopic.incrementAndGet(newTopic);
+                currentTypeTopicCounts.incrementAndGet(newTopic);
                 if (hasValue[language]) {
                     typeTopicSums[type][newTopic] += value;
                 }
@@ -494,8 +562,8 @@ public class MVMATopicModel {
             for (int topic = 0; topic < numTopics; topic++) {
                 topicSortedWords[topic] = new TreeSet<IDSorter>();
                 for (int type = 0; type < vocabularySizes[language]; type++) {
-                    float topicTotal = languageTokensPerTopic[language][topic];
-                    int count = languageTypeTopicCounts[language][type][topic];
+                    float topicTotal = languageTokensPerTopic[language].get(topic);
+                    int count = languageTypeTopicCounts[language][type].get(topic);
                     topicSortedWords[topic].add(new IDSorter(type, count / topicTotal));
 //                    out.println("----" + type + "----");
                 }
@@ -506,7 +574,7 @@ public class MVMATopicModel {
         for (int topic = 0; topic < numTopics; topic++) {
             out.println (topicAlphabet.lookupObject(topic) + "\talpha:" + formatter.format(alphas[topic]));
             for (int language = 0; language < numLanguages; language++) {
-                out.print("\tlanguage:" + language + "\ttokens:" + languageTokensPerTopic[language][topic] + "\tbeta:" + String.format("%.6f", betas[language]) + "\t");
+                out.print("\tlanguage:" + language + "\ttokens:" + languageTokensPerTopic[language].get(topic) + "\tbeta:" + String.format("%.6f", betas[language]) + "\t");
                 TreeSet<IDSorter> sortedWords = languageTopicSortedWords[language][topic];
                 Alphabet alphabet = alphabets[language];
                 int word = 0;
@@ -586,8 +654,8 @@ public class MVMATopicModel {
         // And the topics
 
         for (int language = 0; language < numLanguages; language++) {
-            int[][] typeTopicCounts = languageTypeTopicCounts[language];
-            int[] tokensPerTopic = languageTokensPerTopic[language];
+            AtomicIntegerArray[] typeTopicCounts = languageTypeTopicCounts[language];
+            AtomicIntegerArray tokensPerTopic = languageTokensPerTopic[language];
             float beta = betas[language];
             float logGammaBeta = (float) Dirichlet.logGamma(beta);
 
@@ -610,10 +678,10 @@ public class MVMATopicModel {
             for (int type=0; type < vocabularySizes[language]; type++) {
                 // reuse this array as a pointer
 
-                topicCounts = typeTopicCounts[type];
+//                topicCounts = typeTopicCounts[type];
 
                 for (int topic = 0; topic < numTopics; topic ++) {
-                    int count = topicCounts[topic];
+                    int count = typeTopicCounts[type].get(topic);
                     logLikelihood += Dirichlet.logGammaStirling(beta + count) - logGammaBeta;
                     if (Float.isNaN(logLikelihood)) {
                         System.out.println(count);
@@ -625,9 +693,9 @@ public class MVMATopicModel {
             for (int topic=0; topic < numTopics; topic++) {
                 logLikelihood -=
                         Dirichlet.logGammaStirling( (beta * numTopics) +
-                                tokensPerTopic[ topic ] );
+                                tokensPerTopic.get(topic) );
                 if (Float.isNaN(logLikelihood)) {
-                    System.out.println("after topic " + topic + " " + tokensPerTopic[ topic ]);
+                    System.out.println("after topic " + topic + " " + tokensPerTopic.get(topic));
                     System.exit(1);
                 }
 
@@ -640,13 +708,13 @@ public class MVMATopicModel {
                 for (int topic = 0; topic < numTopics; topic++) {
                     for (int type = 0; type < vocabularySizes[language]; type++) {
                         if (languageSigma2s[language][type] != 0) {
-                            int tmpn = typeTopicCounts[type][topic];
+                            int tmpn = typeTopicCounts[type].get(topic);
                             float tmpSum = languageTypeTopicSums[language][type][topic];
                             float logll = tmpSum + languageMus[language][type];
                             logll *= logll / (tmpn + 1);
                             logll -= typeTopicSquareSum[type][topic] + languageMus[language][type] * languageMus[language][type];
                             logll /= 2 * languageSigma2s[language][type];
-                            logll += Math.log(Math.sqrt(typeTopicCounts[type][topic] + 1)) - typeTopicCounts[type][topic] * Math.log(languageSigma2s[language][type]) / 2;
+                            logll += Math.log(Math.sqrt(typeTopicCounts[type].get(topic) + 1)) - typeTopicCounts[type].get(topic) * Math.log(languageSigma2s[language][type]) / 2;
 
                             logLikelihood += logll;
                         }
@@ -675,7 +743,7 @@ public class MVMATopicModel {
             modelBuilder.addHasValue(hasValue[i]);
             for (int j = 0; j < vocabularySizes[i]; j++)
                 for (int k = 0; k < numTopics; k++)
-                    modelBuilder.addLanguageTypeTopicCounts(languageTypeTopicCounts[i][j][k]);
+                    modelBuilder.addLanguageTypeTopicCounts(languageTypeTopicCounts[i][j].get(k));
 
             if (hasValue[i]) {
                 for (int j = 0; j < vocabularySizes[i]; j++) {
@@ -687,7 +755,7 @@ public class MVMATopicModel {
             }
 
             for (int j = 0; j < numTopics; j++)
-                modelBuilder.addLanguageTokensPerTopic(languageTokensPerTopic[i][j]);
+                modelBuilder.addLanguageTokensPerTopic(languageTokensPerTopic[i].get(j));
 
             DataFormat.Alphabet.Builder alphabetBuilder = DataFormat.Alphabet.newBuilder();
             for (Object entry : alphabets[i].toArray())
