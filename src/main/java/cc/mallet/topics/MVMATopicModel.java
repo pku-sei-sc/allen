@@ -14,7 +14,6 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.TreeSet;
 import java.util.concurrent.*;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 最多训练一次，但可以多次Inference
@@ -57,29 +56,26 @@ public class MVMATopicModel {
 
     //需要设置为ThreadLocal
 
-    private int numThreads;
-    private ExecutorService executorService;
+    private transient int numThreads;
+    private transient ExecutorService executorService;
 
+    private SampleRunner[] sampleRunners;
     private Future<Void>[] futures;
 
-//    private BlockingQueue<float[]> topicTermScoresQueue;
-//    private BlockingQueue<int[]> localTopicCountsQueue;
-//    private BlockingQueue<float[]> localSigma2sQueue;
-//    private BlockingQueue<float[]> localPowersQueue;
 
-
-    private ReentrantLock[][] locks;
-
-    private int[][][][] languageTypeTopicCountsCache;
-    private int[][][] languageTokensPerTopicCache;
+    private transient int[][][][] languageTypeTopicCountsCache;
+    private transient int[][][] languageTokensPerTopicCache;
+    private transient int[] zeroIntegers;
+    private transient float[] zeroFloats;
 
     private transient float[][] topicTermScores;
     private transient int[][] localTopicCounts;
     private transient float[][] localSigma2s;
     private transient float[][] localPowers;
-//    private transient Randoms[] random;
-//
-//    private transient ThreadLocalRandom random;
+
+    private transient int[] topicCounts;
+    private transient float[] topicLogGammas;
+//    private transient float[][] typeTopicSquareSum;
 
     private transient LabelAlphabet topicAlphabet;
 
@@ -151,31 +147,18 @@ public class MVMATopicModel {
         this.alphas = new float[numTopics];
         Arrays.fill(alphas, alphaSum / numTopics);
 
-//        this.random = new Randoms[numThreads];
-//        for (int i = 0; i < numThreads; i++)
-//            this.random[i] = new Randoms();
-
-//        this.random =
-
         if (numThreads > 1)
             log.warn("Model can't get stable result when use parallel accelerating.");
-//        else
-//            random[0] = new Randoms((int) randomSeed);
         
         formatter = NumberFormat.getInstance();
         formatter.setMaximumFractionDigits(5);
 
         this.executorService = Executors.newFixedThreadPool(numThreads);
         this.futures = new Future[numThreads];
+        this.sampleRunners = new SampleRunner[numThreads];
 
-//        int ratio = 4;
-//        topicTermScoresQueue = new ArrayBlockingQueue<>(ratio * numThreads);
-//        localTopicCountsQueue = new ArrayBlockingQueue<>(ratio * numThreads);
-//        localSigma2sQueue = new Arr
-//
-//        for (int i = 0; i < ratio * numThreads; i++) {
-//            topicTermScoresQueue.add(new float[numTopics]);
-//        }
+        for (int thread = 0; thread < numThreads; thread++)
+            this.sampleRunners[thread] = new SampleRunner(thread);
 
         this.topicTermScores = new float[numThreads][numTopics];
         this.localTopicCounts = new int[numThreads][numTopics];
@@ -184,6 +167,11 @@ public class MVMATopicModel {
 
         this.languageTypeTopicCountsCache = new int[numThreads][][][];
         this.languageTokensPerTopicCache = new int[numThreads][][];
+        this.zeroIntegers = new int[numTopics];
+        this.zeroFloats = new float[numTopics];
+
+        this.topicCounts = new int[numTopics];
+        this.topicLogGammas = new float[numTopics];
     }
 
     public void addTrainingInstances(InstanceList[] training, ArrayList<float[]>[] valueList) {
@@ -193,9 +181,6 @@ public class MVMATopicModel {
         languageTokensPerTopic = new int[numLanguages][numTopics];
         for (int thread = 0; thread < numThreads; thread++)
             languageTokensPerTopicCache[thread] = new int[numLanguages][numTopics];
-
-
-        locks = new ReentrantLock[numLanguages][numTopics];
 
         alphabets = new Alphabet[numLanguages];
         vocabularySizes = new int[numLanguages];
@@ -232,14 +217,14 @@ public class MVMATopicModel {
             betas[language] = betaSum / vocabularySizes[language];
             betaSums[language] = betaSum;
 
+//            typeTopicSquareSum = new float[vocabularySizes[language]][numTopics];
+
             int[] typeTotals = new int[vocabularySizes[language]];
 
             languageTypeTopicCounts[language] = new int[vocabularySizes[language]][numTopics];
             for (int thread = 0; thread < numThreads; thread++)
                 languageTypeTopicCountsCache[thread][language] = new int[vocabularySizes[language]][numTopics];
 
-            for (int topic = 0; topic < numTopics; topic++)
-                locks[language][topic] = new ReentrantLock();
 
             if (valueList[language] != null) {
                 hasValue[language] = true;
@@ -342,16 +327,16 @@ public class MVMATopicModel {
 //                }
 //            }
 
-            for (int threadId = 0; threadId < numThreads; threadId++) {
-                for (int language = 0; language < numLanguages; language++) {
-                    Arrays.fill(languageTokensPerTopicCache[threadId][language], 0);
-                    for (int type = 0; type < languageTypeTopicCountsCache[threadId][language].length; type++)
-                        Arrays.fill(languageTypeTopicCountsCache[threadId][language][type], 0);
-                }
-            }
+//            for (int threadId = 0; threadId < numThreads; threadId++) {
+//                for (int language = 0; language < numLanguages; language++) {
+//                    System.arraycopy(zeroIntegers, 0, languageTokensPerTopicCache[threadId][language], 0, numTopics);
+//                    for (int type = 0; type < languageTypeTopicCountsCache[threadId][language].length; type++)
+//                        System.arraycopy(zeroIntegers, 0, languageTypeTopicCountsCache[threadId][language][type], 0, numTopics);
+//                }
+//            }
 
             for (int threadId = 0; threadId < numThreads; threadId++)
-                futures[threadId] = (Future<Void>) executorService.submit(new SampleRunner(threadId));
+                futures[threadId] = (Future<Void>) executorService.submit(sampleRunners[threadId]);
 
             for (int threadId = 0; threadId < numThreads; threadId++)
                 futures[threadId].get();
@@ -422,20 +407,28 @@ public class MVMATopicModel {
 
         @Override
         public void run() {
-            //                for (int language = 0; language < numLanguages; language++) {
-//                    System.arraycopy(languageTokensPerTopic[language], 0, languageTokensPerTopicCache[threadId][language], 0, numTopics);
-//                    for (int type = 0; type < languageTypeTopicCountsCache[threadId][language].length; type++)
-//                        System.arraycopy(languageTypeTopicCounts[language][type], 0, languageTypeTopicCountsCache[threadId][language][type], 0, numTopics);
-//                }
 
 //            for (int language = 0; language < numLanguages; language++) {
 //                Arrays.fill(languageTokensPerTopicCache[threadId][language], 0);
 //                for (int type = 0; type < languageTypeTopicCountsCache[threadId][language].length; type++)
 //                    Arrays.fill(languageTypeTopicCountsCache[threadId][language][type], 0);
 //            }
+            for (int language = 0; language < numLanguages; language++) {
+                System.arraycopy(languageTokensPerTopic[language], 0, languageTokensPerTopicCache[threadId][language], 0, numTopics);
+                for (int type = 0; type < languageTypeTopicCountsCache[threadId][language].length; type++)
+                    System.arraycopy(languageTypeTopicCounts[language][type], 0, languageTypeTopicCountsCache[threadId][language][type], 0, numTopics);
+            }
 
             for (int doc = threadId; doc < trainingData.size(); doc += numThreads)
                 sampleTopicsForOneDoc (trainingData.get(doc), doc, threadId);
+
+            for (int language = 0; language < numLanguages; language++) {
+                for (int topic = 0; topic < numTopics; topic++)
+                    languageTokensPerTopicCache[threadId][language][topic] -= languageTokensPerTopic[language][topic];
+                for (int type = 0; type < languageTypeTopicCountsCache[threadId][language].length; type++)
+                    for (int topic = 0; topic < numTopics; topic++)
+                        languageTypeTopicCountsCache[threadId][language][type][topic] -= languageTypeTopicCounts[language][type][topic];
+            }
         }
     }
 
@@ -445,8 +438,8 @@ public class MVMATopicModel {
         float[] localSigma2s = this.localSigma2s[threadId];
         float[] localPowers = this.localPowers[threadId];
 
-//        int[][][] languageTypeTopicCounts = languageTypeTopicCountsCache[threadId];
-//        int[][] languageTokensPerTopic = languageTokensPerTopicCache[threadId];
+        int[][][] languageTypeTopicCounts = languageTypeTopicCountsCache[threadId];
+        int[][] languageTokensPerTopic = languageTokensPerTopicCache[threadId];
 
         int type, oldTopic, newTopic;
         float value = 0;
@@ -495,10 +488,10 @@ public class MVMATopicModel {
                 localTopicCounts[oldTopic] --;
 
 
-//                tokensPerTopic[oldTopic]--;
-//                currentTypeTopicCounts[oldTopic]--;
-                languageTokensPerTopicCache[threadId][language][oldTopic]--;
-                languageTypeTopicCountsCache[threadId][language][type][oldTopic]--;
+                tokensPerTopic[oldTopic]--;
+                currentTypeTopicCounts[oldTopic]--;
+//                languageTokensPerTopicCache[threadId][language][oldTopic]--;
+//                languageTypeTopicCountsCache[threadId][language][type][oldTopic]--;
 
 
                 float regu = 0;
@@ -568,10 +561,10 @@ public class MVMATopicModel {
                 oneDocTopics[position] = newTopic;
                 localTopicCounts[newTopic]++;
 
-//                tokensPerTopic[newTopic]++;
-//                currentTypeTopicCounts[newTopic]++;
-                languageTokensPerTopicCache[threadId][language][newTopic]++;
-                languageTypeTopicCountsCache[threadId][language][type][newTopic]++;
+                tokensPerTopic[newTopic]++;
+                currentTypeTopicCounts[newTopic]++;
+//                languageTokensPerTopicCache[threadId][language][newTopic]++;
+//                languageTypeTopicCountsCache[threadId][language][type][newTopic]++;
 
                 if (hasValue[language]) {
                     typeTopicSums[type][newTopic] += value;
@@ -689,8 +682,10 @@ public class MVMATopicModel {
 
         // Do the documents first
 
-        int[] topicCounts = new int[numTopics];
-        float[] topicLogGammas = new float[numTopics];
+//        int[] topicCounts = new int[numTopics];
+//        float[] topicLogGammas = new float[numTopics];
+        System.arraycopy(zeroIntegers, 0, topicCounts, 0, numTopics);
+        System.arraycopy(zeroFloats, 0, topicLogGammas, 0, numTopics);
         int[] docTopics;
         int[] docTypes;
         float[] docValues;
@@ -740,7 +735,11 @@ public class MVMATopicModel {
             float beta = betas[language];
             float logGammaBeta = (float) Dirichlet.logGamma(beta);
 
+
             float[][] typeTopicSquareSum = new float[vocabularySizes[language]][numTopics];
+//            for (int type = 0; type < vocabularySizes[language]; type++)
+//                System.arraycopy(zeroFloats, 0, typeTopicSquareSum[type], 0, numTopics);
+
 
             if (hasValue[language]) {
                 for (int doc = 0; doc < trainingData.size(); doc++) {
