@@ -53,6 +53,13 @@ public class MVMATopicModel {
     private transient float[] betas;
     private transient float[] betaSums;
 
+
+    //需要设置为ThreadLocal
+    private transient float[] topicTermScores;
+    private transient int[] localTopicCounts;
+    private transient float[] localSigma2s;
+    private transient float[] localPowers;
+
     private transient LabelAlphabet topicAlphabet;
 
     private transient ArrayList<TopicAssignment> trainingData;
@@ -127,6 +134,11 @@ public class MVMATopicModel {
         
         formatter = NumberFormat.getInstance();
         formatter.setMaximumFractionDigits(5);
+
+        this.topicTermScores = new float[numTopics];
+        this.localTopicCounts = new int[numTopics];
+        this.localSigma2s = new float[numTopics];
+        this.localPowers = new float[numTopics];
     }
 
     public void addTrainingInstances(InstanceList[] training, ArrayList<float[]>[] valueList) {
@@ -305,7 +317,7 @@ public class MVMATopicModel {
         int type, oldTopic, newTopic;
         float value = 0;
 
-        int[] localTopicCounts = new int[numTopics];
+        Arrays.fill(localTopicCounts, 0);
 
         for (int language = 0; language < numLanguages; language++) {
             int[] oneDocTopics = topicAssignment.topicSequences[language].getFeatures();
@@ -330,7 +342,6 @@ public class MVMATopicModel {
             float beta = betas[language];
             float betaSum = betaSums[language];
 
-            float[] topicTermScores = new float[numTopics];
             float score, sum;
             float[][] typeTopicSums = null;
             float[] mus = null;
@@ -350,21 +361,24 @@ public class MVMATopicModel {
                 currentTypeTopicCounts[oldTopic] --;
 
                 float regu = 0;
-                float[] tmpSigma2s = null;
-                float[] powers = null;
+//                float[] localSigma2s = null;
+//                float[] localPowers = null;
                 if (hasValue[language]) {
                     value = realFeatures[language].get(docIndex)[position];
+
+                    //lock
                     typeTopicSums[type][oldTopic] -= value;
-                    tmpSigma2s = new float[numTopics];
-                    powers = new float[numTopics];
+
+//                    localSigma2s = new float[numTopics];
+//                    localPowers = new float[numTopics];
                     if (languageSigma2s[language][type] != 0) {
                         float logMax = Float.NEGATIVE_INFINITY;
                         for (int topic = 0; topic < numTopics; topic++) {
                             float tmpMu = (mus[type] + typeTopicSums[type][topic]) / (1 + currentTypeTopicCounts[topic]);
-                            tmpSigma2s[topic] = languageSigma2s[language][type] / (1 + currentTypeTopicCounts[topic]);
-                            powers[topic] = -(value - tmpMu) * (value - tmpMu) / (2 * tmpSigma2s[topic]);
-                            if (powers[topic] > logMax) {
-                                logMax = powers[topic];
+                            localSigma2s[topic] = languageSigma2s[language][type] / (1 + currentTypeTopicCounts[topic]);
+                            localPowers[topic] = -(value - tmpMu) * (value - tmpMu) / (2 * localSigma2s[topic]);
+                            if (localPowers[topic] > logMax) {
+                                logMax = localPowers[topic];
                             }
                         }
                         regu = -logMax;
@@ -380,8 +394,8 @@ public class MVMATopicModel {
                                             (betaSum + tokensPerTopic[topic]));
 
                     if (hasValue[language] && languageSigma2s[language][type] != 0) {
-                        float normalFactor = 1 / (float) Math.sqrt(tmpSigma2s[topic]);
-                        normalFactor *= Math.exp(powers[topic] + regu);
+                        float normalFactor = 1 / (float) Math.sqrt(localSigma2s[topic]);
+                        normalFactor *= Math.exp(localPowers[topic] + regu);
                         score *= normalFactor;
                     }
 
@@ -658,18 +672,22 @@ public class MVMATopicModel {
                 .setNumLanguages(numLanguages);
 
         for (int i = 0; i < numLanguages; i++) {
-            for (int j = 0; j < vocabularySizes[i]; j++) {
-                for (int k = 0; k < numTopics; k++) {
+            modelBuilder.addHasValue(hasValue[i]);
+            for (int j = 0; j < vocabularySizes[i]; j++)
+                for (int k = 0; k < numTopics; k++)
                     modelBuilder.addLanguageTypeTopicCounts(languageTypeTopicCounts[i][j][k]);
-                    modelBuilder.addLanguageTypeTopicSums(languageTypeTopicSums[i][j][k]);
+
+            if (hasValue[i]) {
+                for (int j = 0; j < vocabularySizes[i]; j++) {
+                    for (int k = 0; k < numTopics; k++)
+                        modelBuilder.addLanguageTypeTopicSums(languageTypeTopicSums[i][j][k]);
+                    modelBuilder.addLanguageMus(languageMus[i][j]);
+                    modelBuilder.addLanguageSigma2S(languageSigma2s[i][j]);
                 }
-                modelBuilder.addLanguageMus(languageMus[i][j]);
-                modelBuilder.addLanguageSigma2S(languageSigma2s[i][j]);
             }
 
             for (int j = 0; j < numTopics; j++)
                 modelBuilder.addLanguageTokensPerTopic(languageTokensPerTopic[i][j]);
-            modelBuilder.addHasValue(hasValue[i]);
 
             DataFormat.Alphabet.Builder alphabetBuilder = DataFormat.Alphabet.newBuilder();
             for (Object entry : alphabets[i].toArray())

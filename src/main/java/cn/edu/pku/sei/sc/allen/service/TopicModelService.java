@@ -144,6 +144,11 @@ public class TopicModelService {
             Rule rule = RuleUtil.loadRule(trainingTask.getRuleFile());
 
             topicModel.loadDataChunks(dataChunks, rule);
+
+            //释放读取的数据资源
+            dataChunks.clear();
+            System.gc();
+
             topicModel.training();
 
             //导出模型数据并写入模型文件

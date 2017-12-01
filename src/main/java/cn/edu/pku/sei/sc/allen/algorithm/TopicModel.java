@@ -74,7 +74,8 @@ public class TopicModel {
                 stopWordSet.add(stopWord.trim().toLowerCase());
 
             instanceLists[i] = new InstanceList(alphabet, null);
-            valueList[i] = new ArrayList<>();
+            if (dataChunk.hasValue())
+                valueList[i] = new ArrayList<>();
 
             //公有实例循环
             for (Object commonInstanceId : commonInstanceIds) {
@@ -86,7 +87,9 @@ public class TopicModel {
                     tokenCount += token.getCount();
 
                 FeatureSequence featureSequence = new FeatureSequence(alphabet, tokenCount);
-                float[] values = new float[tokenCount];
+                float[] values = new float[0];
+                if (dataChunk.hasValue())
+                    values = new float[tokenCount];
 
                 //加载词语和属性值
                 tokenCount = 0;
@@ -104,7 +107,8 @@ public class TopicModel {
                 }
 
                 instanceLists[i].add(new Instance(featureSequence, null, commonInstanceId, null));
-                valueList[i].add(values);
+                if (dataChunk.hasValue())
+                    valueList[i].add(values);
             }
         }
     }
