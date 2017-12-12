@@ -711,4 +711,73 @@ public class MVMATopicModel {
         }
     }
 
+    public Float[] inference(Instance instances, int language, int iteratetime){
+        Alphabet alphabet = instances.getDataAlphabet();
+        int[] currentTypeTopicCounts = new int[numTopics];
+        int[] localTopicCounts= new int[numTopics];
+        FeatureSequence tokens = (FeatureSequence) instances.getData();
+        int[] topics = new int[tokens.size()];
+        int[][] typeTopicCounts = languageTypeTopicCounts[language];
+        int[] tokensPerTopic = languageTokensPerTopic[language];
+        int sumtokens = tokens.size();
+        float beta =  betaSum /  alphabets[language].size();
+        float alpha = alphaSum / numTopics;
+        //随机初始化
+        for (int position = 0; position < tokens.size(); position++) {
+            Object token= alphabet.lookupObject(position);
+            if(!alphabets[language].contains(token)){
+                sumtokens--;
+                continue;
+            }
+            int topic = (int) Math.random() * numTopics;
+            topics[position] = topic;
+            localTopicCounts[topic]++;
+        }
+        //迭代
+        for(int i=0;i<iteratetime;i++){
+            float[] scores = new float[numTopics];
+            float score = 0;
+            float sum = 0;
+            int newTopic;
+            int idx=0;
+            for(int position = 0;position<tokens.size();position++){
+                Object token= alphabet.lookupObject(position);
+                if(!alphabets[language].contains(token))continue;
+                else{
+                    idx = alphabets[language].lookupIndex(token);
+                }
+                currentTypeTopicCounts = typeTopicCounts[idx];
+                for (int topic = 0; topic < numTopics; topic++) {
+                    score =
+                            (alpha + localTopicCounts[topic]) *
+                                    ((beta + currentTypeTopicCounts[topic]) /
+                                            (betaSum + tokensPerTopic[topic]));
+
+                    sum += score;
+                    scores[topic] = score;
+                }
+                float sample =  (float) random.nextUniform() * sum;
+
+                // Figure out which topic contains that point
+                newTopic = -1;
+                while (sample > 0.0f) {
+                    newTopic++;
+                    if (newTopic == numTopics - 1)
+                        break;
+                    sample -= topicTermScores[newTopic];
+                }
+                if (newTopic == -1) {
+                    throw new IllegalStateException ("SimpleLDA: New topic not sampled.");
+                }
+
+                // Put that new topic into the counts
+                topics[position] = newTopic;
+            }
+        }
+        Float[] P = new Float[numTopics];
+        for(int i=0;i<numTopics;i++){
+            P[i]= (float)localTopicCounts[i]/(float)sumtokens;
+        }
+        return P;
+    }
 }
