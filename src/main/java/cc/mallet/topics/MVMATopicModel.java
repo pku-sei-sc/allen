@@ -141,6 +141,11 @@ public class MVMATopicModel {
         this.localPowers = new float[numTopics];
     }
 
+    public MVMATopicModel(DataFormat.MVMATopicModel model, long randomSeed, long taskId) {
+        this(model.getNumTopics(), model.getAlphaSum(), model.getBetaSum(), randomSeed, taskId);
+        loadModel(model);
+    }
+
     public void addTrainingInstances(InstanceList[] training, ArrayList<float[]>[] valueList) {
         realFeatures = valueList;
         numLanguages = training.length;
@@ -641,6 +646,61 @@ public class MVMATopicModel {
         }
 
         return modelBuilder.build();
+    }
+
+    private void loadModel(DataFormat.MVMATopicModel model) {
+        this.numLanguages = model.getNumLanguages();
+
+        alphabets = new Alphabet[numLanguages];
+        hasValue = new boolean[numLanguages];
+        vocabularySizes = new int[numLanguages];
+
+        betas = new float[numLanguages];
+        betaSums = new float[numLanguages];
+        languageTokensPerTopic = new int[numLanguages][numTopics];
+
+        languageTypeTopicCounts = new int[numLanguages][][];
+        languageTypeTopicSums = new float[numLanguages][][];
+        languageMus = new float[numLanguages][];
+        languageSigma2s = new float[numLanguages][];
+
+
+        for (int i = 0; i < numLanguages; i++) {
+            alphabets[i] = new Alphabet(String.class);
+            DataFormat.Alphabet alphabet = model.getAlphabets(i);
+            for (int j = 0; j < alphabet.getEntryCount(); j++)
+                alphabets[i].lookupIndex(alphabet.getEntry(j));
+
+            hasValue[i] = model.getHasValue(i);
+            vocabularySizes[i] = alphabet.getEntryCount();
+
+            betas[i] = betaSum / vocabularySizes[i];
+            betaSums[i] = betaSum;
+
+            int idx = 0;
+            languageTypeTopicCounts[i] = new int[vocabularySizes[i]][numTopics];
+            for (int j = 0; j < vocabularySizes[i]; j++)
+                for (int k = 0; k < numTopics; k++)
+                    languageTypeTopicCounts[i][j][k] = model.getLanguageTypeTopicCounts(idx++);
+
+            idx = 0;
+            for (int j = 0; j < numTopics; j++)
+                languageTokensPerTopic[i][j] = model.getLanguageTokensPerTopic(idx++);
+
+            if (hasValue[i]) {
+                idx = 0;
+                int idx2 = 0;
+                languageTypeTopicSums[i] = new float[vocabularySizes[i]][numTopics];
+                languageMus[i] = new float[vocabularySizes[i]];
+                languageSigma2s[i] = new float[vocabularySizes[i]];
+                for (int j = 0; j < vocabularySizes[i]; j++) {
+                    for (int k = 0; k < numTopics; k++)
+                        languageTypeTopicSums[i][j][k] = model.getLanguageTypeTopicSums(idx++);
+                    languageMus[i][j] = model.getLanguageMus(idx2);
+                    languageSigma2s[i][j] = model.getLanguageSigma2S(idx2++);
+                }
+            }
+        }
     }
 
 }
