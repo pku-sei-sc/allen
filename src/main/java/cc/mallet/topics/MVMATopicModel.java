@@ -431,61 +431,6 @@ public class MVMATopicModel {
         }
     }
 
-//    public List<TopicWord2> getTopWordsDist() {
-//        List<TopicWord2> tws = new ArrayList<>();
-////        float[][][] result = new float[numLanguages][numTopics][];
-////        int[][] countTopicTotal = new int[numLanguages][numTopics];
-////        for (int lan = 0; lan < numLanguages; lan++) {
-////                for (int t = 0; t < numTopics; t++) {
-////                    result[lan][t] = new float[vocabularySizes[lan]];
-////                }
-////        }
-//        for (int lan = 0; lan < numLanguages; lan++) {
-////			System.out.println(lan+"---------------------");
-//            TopicWord2 tw = new TopicWord2();
-//            int limit = tw.TOPIC_WORD_LIMIT;
-//            for (int topic = 0; topic < numTopics; topic++) {
-////				System.out.println(topic);
-//                Map<String, Float> mp = new HashMap<>();
-//                Map<String, Float> mvalues = null;
-//                if (hasValue[lan]) {
-//                    mvalues = new HashMap<>();
-//                }
-//                for (int w = 0; w < vocabularySizes[lan]; w++) {
-//                    float count = languageTypeTopicCounts[lan][w][topic];
-//                    if (count == 0) continue;
-//                    float dist = (count + betas[lan])/
-//                            (languageTokensPerTopic[lan][topic] + betas[lan]*vocabularySizes[lan]);
-//                    String word = alphabets[lan].lookupObject(w).toString();
-//                    mp.put(word, dist);
-//                    if (hasValue[lan]) {
-//                        float value = languageTypeTopicSums[lan][w][topic] / count;
-//                        mvalues.put(word, value);
-//                    }
-//                    if (mp.size()>limit){
-//                        float min = 10.1;
-//                        String mins = null;
-//                        for (Map.Entry<String,Float> entry:mp.entrySet() ){
-//                            if (entry.getValue()<=min){
-//                                min=entry.getValue();
-//                                mins=entry.getKey();
-//                            }
-//                        }
-//                        mp.remove(mins);
-//                        if (hasValue[lan]) {
-//                            mvalues.remove(mins);
-//                        }
-//                    }
-//                }
-//                tw.addTopicWordDis(mp);
-//                tw.addTopicValues(mvalues);
-////				System.out.println();
-//            }
-//            tws.add(tw);
-//        }
-//        return tws;
-//    }
-
     public void printTopWords (PrintStream out, int numWords, boolean usingNewLines) {
 
         TreeSet[][] languageTopicSortedWords = new TreeSet[numLanguages][numTopics];
