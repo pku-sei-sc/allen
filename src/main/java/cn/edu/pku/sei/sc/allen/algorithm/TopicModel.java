@@ -213,6 +213,22 @@ public class TopicModel {
         return mvmaTopicModel.getTotalTime();
     }
 
+    public List<Float> getAbnormal(DataFormat.MVMATopicModel model, List<DataChunk> dataChunks,Rule rule ){
+        PMADSimMeasure sim = null;
+        List<Float> like = new ArrayList<>() ;
 
+        loadDataChunks(dataChunks,rule);
+        MVMATopicModel mvmaTopicModel = new MVMATopicModel(model.getNumTopics(), model.getAlphaSum(),model.getBetaSum(), randomSeed, taskId);
+        mvmaTopicModel.loadmodel(model);
+
+        for (int i=0;i<instanceLists[0].size();i++){
+            Instance instanceA = instanceLists[0].get(i);
+            Instance instanceB = instanceLists[1].get(i);
+            Float[] p1 = mvmaTopicModel.inference(instanceA,0,10);
+            Float[] p2 =mvmaTopicModel.inference(instanceB,1,10);
+            like.add(sim.innerProduct(p1,p2));
+        }
+        return like;
+    }
 
 }
