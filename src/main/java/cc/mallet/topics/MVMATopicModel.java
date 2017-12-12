@@ -412,7 +412,8 @@ public class MVMATopicModel {
         int type, oldTopic, newTopic;
         float value = 0;
 
-        Arrays.fill(localTopicCounts, 0);
+//        Arrays.fill(localTopicCounts, 0);
+        System.arraycopy(zeroIntegers, 0, localTopicCounts, 0, numTopics);
 
         for (int language = 0; language < numLanguages; language++) {
             int[] oneDocTopics = topicAssignment.topicSequences[language].getFeatures();

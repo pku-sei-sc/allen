@@ -115,7 +115,7 @@ public class TopicModel {
     }
 
     public void training() throws ExecutionException, InterruptedException {
-        mvmaTopicModel = new MVMATopicModel(totalTopics, (float) alphaSum, (float) betaSum, randomSeed, 64, taskId);
+        mvmaTopicModel = new MVMATopicModel(totalTopics, (float) alphaSum, (float) betaSum, randomSeed, 16, taskId);
 
         mvmaTopicModel.addTrainingInstances(instanceLists, valueList);
         mvmaTopicModel.setNumIterations(numIteration);
