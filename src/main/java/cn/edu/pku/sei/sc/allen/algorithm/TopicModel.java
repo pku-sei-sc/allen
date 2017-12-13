@@ -35,9 +35,15 @@ public class TopicModel {
 
     private InstanceList[] instanceLists;
 
-    private ArrayList<float[]>[] valueList;
+    private ArrayList<float[]>[] valueLists;
+
+    private InstanceList instanceList;
+
+    private ArrayList<float[]> valueList;
 
     private MVMATopicModel mvmaTopicModel;
+
+    private int language;
 
     public TopicModel(long taskId, int totalTopics, double alphaSum, double betaSum, long randomSeed, int numIteration, int showTopicsInterval, int showTopicsNum) {
         this.taskId = taskId;
@@ -50,6 +56,12 @@ public class TopicModel {
         this.showTopicsNum = showTopicsNum;
     }
 
+    public TopicModel(long taskId, long randomSeed, int language) {
+        this.taskId = taskId;
+        this.randomSeed = randomSeed;
+        this.language = language;
+    }
+
     @SuppressWarnings("unchecked")
     public void loadDataChunks(List<DataChunk> dataChunks, Rule rule) {
         //不同视图下实例求交集
@@ -60,7 +72,7 @@ public class TopicModel {
         }
 
         instanceLists = new InstanceList[dataChunks.size()];
-        valueList = new ArrayList[dataChunks.size()];
+        valueLists = new ArrayList[dataChunks.size()];
 
         //视图循环
         for (int i = 0; i < dataChunks.size(); i++) {
@@ -75,7 +87,7 @@ public class TopicModel {
 
             instanceLists[i] = new InstanceList(alphabet, null);
             if (dataChunk.hasValue())
-                valueList[i] = new ArrayList<>();
+                valueLists[i] = new ArrayList<>();
 
             //公有实例循环
             for (Object commonInstanceId : commonInstanceIds) {
@@ -108,18 +120,45 @@ public class TopicModel {
 
                 instanceLists[i].add(new Instance(featureSequence, null, commonInstanceId, null));
                 if (dataChunk.hasValue())
-                    valueList[i].add(values);
+                    valueLists[i].add(values);
             }
         }
+    }
+
+    public void loadDataChunk(DataFormat.MVMATopicModel model, DataChunk dataChunk, Rule rule) {
+        mvmaTopicModel = new MVMATopicModel(model, randomSeed, taskId);
+        Alphabet alphabet = mvmaTopicModel.getAlphabet(language);
+        long dataChunkId = dataChunk.getMeta().getId();
+        boolean hasValue = dataChunk.hasValue() && mvmaTopicModel.hasValue(language);
+
+
+        Set<String> stopWordSet = new HashSet<>();
+        for (String stopWord : rule.getStopWords(dataChunkId))
+            stopWordSet.add(stopWord.trim().toLowerCase());
+
+        instanceList = new InstanceList(alphabet, null);
+        if (hasValue)
+            valueList = new ArrayList<>();
+
+        for (int i = 0; i < dataChunk.getInstanceAlphabet().size(); i++) {
+
+        }
+
     }
 
     public void training() {
         mvmaTopicModel = new MVMATopicModel(totalTopics, (float) alphaSum, (float) betaSum, randomSeed, taskId);
 
-        mvmaTopicModel.addTrainingInstances(instanceLists, valueList);
+        mvmaTopicModel.addTrainingInstances(instanceLists, valueLists);
         mvmaTopicModel.setNumIterations(numIteration);
         mvmaTopicModel.setTopicDisplay(showTopicsInterval, showTopicsNum);
         mvmaTopicModel.training();
+    }
+
+
+
+    public void inference() {
+
     }
 
     public DataFormat.MVMATopicModel getModel() {

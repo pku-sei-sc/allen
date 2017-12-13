@@ -5,6 +5,7 @@ import cn.edu.pku.sei.sc.allen.lang.BadRequestException;
 import cn.edu.pku.sei.sc.allen.model.*;
 import cn.edu.pku.sei.sc.allen.model.data.DataFormat;
 import cn.edu.pku.sei.sc.allen.storage.DataChunkMetaStorage;
+import cn.edu.pku.sei.sc.allen.storage.InferenceTaskStorage;
 import cn.edu.pku.sei.sc.allen.storage.TrainingTaskStorage;
 import cn.edu.pku.sei.sc.allen.util.RuleUtil;
 import cn.edu.pku.sei.sc.allen.view.TrainingProgress;
@@ -16,9 +17,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -38,9 +37,14 @@ public class TopicModelService {
     private TrainingTaskStorage trainingTaskStorage;
 
     @Autowired
+    private InferenceTaskStorage inferenceTaskStorage;
+
+    @Autowired
     private DataChunkMetaStorage dataChunkMetaStorage;
 
-    private Map<Long, TopicModel> topicModelMap = new ConcurrentHashMap<>();
+    private Map<Long, TopicModel> trainingTaskMap = new ConcurrentHashMap<>();
+
+    private Map<Long, TopicModel> inferenceTaskMap = new ConcurrentHashMap<>();
 
     private String modelPath = "model";
 
@@ -117,7 +121,7 @@ public class TopicModelService {
                 trainingTask.getShowTopicsInterval(),
                 trainingTask.getShowTopicsNum());
 
-        if (topicModelMap.putIfAbsent(trainingTaskId, topicModel) != null)
+        if (trainingTaskMap.putIfAbsent(trainingTaskId, topicModel) != null)
             throw new IllegalStateException("当前训练任务已经在运行");
         try {
             logger.info("Training task id:{} start!", trainingTaskId);
@@ -162,7 +166,7 @@ public class TopicModelService {
 
             logger.info("Training task id:{} finished!", trainingTaskId);
         } finally {
-            topicModelMap.remove(trainingTaskId);
+            trainingTaskMap.remove(trainingTaskId);
         }
     }
 
@@ -176,7 +180,7 @@ public class TopicModelService {
             case Finished:
                 throw new BadRequestException("任务已完成");
             case Processing: {
-                TopicModel topicModel = topicModelMap.get(trainingTaskId);
+                TopicModel topicModel = trainingTaskMap.get(trainingTaskId);
                 if (topicModel == null)
                     throw new BadRequestException("任务未在运行中");
                 return new TrainingProgress()
@@ -189,5 +193,96 @@ public class TopicModelService {
         }
     }
 
+
+    public InferenceTask createInferenceTask(long dataChunkId, String ruleFile, String modelManifest, int language, long randomSeed,
+                                             int numIterations, int burnIn, int thinning) {
+        if (dataChunkMetaStorage.findOne(dataChunkId) == null)
+            throw new BadRequestException("不存在的数据块");
+
+        File modelFile = new File(getModelFilePath(modelManifest));
+        if (!modelFile.isFile())
+            throw new BadRequestException("不存在的训练模型");
+
+        InferenceTask inferenceTask = new InferenceTask()
+                .setDataChunkId(dataChunkId)
+                .setRuleFile(ruleFile)
+                .setModelManifest(modelManifest)
+                .setLanguage(language)
+                .setRandomSeed(randomSeed)
+                .setNumIterations(numIterations)
+                .setBurnIn(burnIn)
+                .setThinning(thinning)
+                .setStatus(TaskStatus.Stopped);
+
+        return inferenceTaskStorage.save(inferenceTask);
+    }
+
+    public void startInference(long inferenceTaskId, boolean forced) throws IOException {
+        InferenceTask inferenceTask = inferenceTaskStorage.findOne(inferenceTaskId);
+
+        if (inferenceTask == null)
+            throw new IllegalArgumentException("不存在的训练任务");
+
+        if (inferenceTask.getStatus() != TaskStatus.Stopped && !forced)
+            throw new IllegalStateException("无法开始一个非停止状态的任务，请尝试强制开始");
+
+        DataChunkMeta dataChunkMeta = dataChunkMetaStorage.findOne(inferenceTask.getDataChunkId());
+        if (dataChunkMeta.getStatus() != TaskStatus.Finished)
+            throw new IllegalStateException("选择的数据块id:" + dataChunkMeta.getId() + "未完成导入");
+
+        TopicModel topicModel = new TopicModel(inferenceTaskId, inferenceTask.getRandomSeed());
+
+        if (inferenceTaskMap.putIfAbsent(inferenceTaskId, topicModel) != null)
+            throw new IllegalStateException("当前推断任务已经在运行");
+        try {
+            logger.info("Inference task id:{} start!", inferenceTaskId);
+
+            inferenceTask.setManifestId(UUID.randomUUID().toString());
+            File distFile = new File(getModelFilePath(inferenceTask.getManifestId()));
+
+            while (distFile.isFile()) {
+                inferenceTask.setManifestId(UUID.randomUUID().toString());
+                distFile = new File(getModelFilePath(inferenceTask.getManifestId()));
+            }
+
+            if (!distFile.getParentFile().isDirectory() && !distFile.getParentFile().mkdir())
+                throw new IllegalStateException("无法创建文件子目录");
+
+            //加载数据块
+            DataChunk dataChunk = inputDataService.loadDataChunk(dataChunkMeta);
+
+            //加载模型
+            DataFormat.MVMATopicModel model = loadTopicModel(inferenceTask.getModelManifest());
+
+            //加载规则
+            Rule rule = RuleUtil.loadRule(inferenceTask.getRuleFile());
+
+            topicModel.loadDataChunk(model, dataChunk, rule);
+
+            //释放资源
+            dataChunk = null;
+            model = null;
+            rule = null;
+            System.gc();
+
+            topicModel.inference();
+
+
+
+
+        } finally {
+            inferenceTaskMap.remove(inferenceTaskId);
+        }
+    }
+
+    private DataFormat.MVMATopicModel loadTopicModel(String modelManifest) throws IOException {
+        File modelFile = new File(getModelFilePath(modelManifest));
+        if (!modelFile.isFile())
+            throw new BadRequestException("找不到模型文件");
+
+        try (FileInputStream fileInputStream = new FileInputStream(modelFile)) {
+            return DataFormat.MVMATopicModel.parseFrom(fileInputStream);
+        }
+    }
 
 }

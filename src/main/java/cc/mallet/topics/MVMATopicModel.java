@@ -115,6 +115,14 @@ public class MVMATopicModel {
 
     //endregion
 
+    public Alphabet getAlphabet(int language) {
+        return alphabets[language];
+    }
+
+    public boolean hasValue(int language) {
+        return hasValue[language];
+    }
+
     public MVMATopicModel(int numTopics, float alphaSum, float betaSum, long randomSeed, long taskId) {
         this.numTopics = numTopics;
         this.alphaSum = alphaSum;
@@ -146,8 +154,8 @@ public class MVMATopicModel {
         loadModel(model);
     }
 
-    public void addTrainingInstances(InstanceList[] training, ArrayList<float[]>[] valueList) {
-        realFeatures = valueList;
+    public void addTrainingInstances(InstanceList[] training, ArrayList<float[]>[] valueLists) {
+        realFeatures = valueLists;
         numLanguages = training.length;
 
         languageTokensPerTopic = new int[numLanguages][numTopics];
@@ -186,7 +194,7 @@ public class MVMATopicModel {
             int[] typeTotals = new int[vocabularySizes[language]];
             languageTypeTopicCounts[language] = new int[vocabularySizes[language]][numTopics];
 
-            if (valueList[language] != null) {
+            if (valueLists[language] != null) {
                 hasValue[language] = true;
                 languageTypeTopicSums[language] = new float[vocabularySizes[language]][numTopics];
                 languageMus[language] = new float[vocabularySizes[language]];
@@ -235,7 +243,7 @@ public class MVMATopicModel {
 
                     languageTypeTopicCounts[language][type][topic] ++;
                     if (hasValue[language]) {
-                        float value = valueList[language].get(doc)[position];
+                        float value = valueLists[language].get(doc)[position];
 
                         languageTypeTopicSums[language][type][topic] += value;
                         languageMus[language][type] += value;

@@ -1,5 +1,6 @@
 package cn.edu.pku.sei.sc.allen.controller;
 
+import cn.edu.pku.sei.sc.allen.model.InferenceTask;
 import cn.edu.pku.sei.sc.allen.model.TrainingTask;
 import cn.edu.pku.sei.sc.allen.service.TopicModelService;
 import cn.edu.pku.sei.sc.allen.storage.TrainingTaskStorage;
@@ -60,7 +61,23 @@ public class TopicModelController {
     }
 
     @RequestMapping(value = "/inference", method = RequestMethod.POST)
-    public void inference() {
+    public InferenceTask inference(@RequestParam long dataChunkId,
+                                   @RequestParam String ruleFile,
+                                   @RequestParam String modelManifest,
+                                   @RequestParam int language,
+                                   @RequestParam(required = false, defaultValue = "0") long randomSeed,
+                                   @RequestParam(required = false, defaultValue = "100") int numIterations,
+                                   @RequestParam(required = false, defaultValue = "10") int burnIn,
+                                   @RequestParam(required = false, defaultValue = "5") int thinning) {
+        if (randomSeed == 0)
+            randomSeed = System.nanoTime();
+        return topicModelService.createInferenceTask(dataChunkId, ruleFile, modelManifest, language, randomSeed, numIterations,
+                burnIn, thinning);
+    }
+
+    @RequestMapping(value = "/inference/{inferenceTaskId}/start", method = RequestMethod.POST)
+    public void startInference(@PathVariable long inferenceTaskId,
+                               @RequestParam(required = false, defaultValue = "false") boolean forced) {
 
     }
 }
