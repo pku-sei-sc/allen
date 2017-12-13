@@ -257,7 +257,7 @@ public class TopicModelService {
             //加载规则
             Rule rule = RuleUtil.loadRule(inferenceTask.getRuleFile());
 
-            topicModel.loadDataChunk(model, dataChunk, rule);
+            topicModel.loadDataChunk(model, dataChunk, rule, inferenceTask.getLanguage());
 
             //释放资源
             dataChunk = null;
@@ -265,7 +265,7 @@ public class TopicModelService {
             rule = null;
             System.gc();
 
-            topicModel.inference();
+            topicModel.inference(inferenceTask.getNumIterations(), inferenceTask.getBurnIn(), inferenceTask.getThinning());
 
 
 

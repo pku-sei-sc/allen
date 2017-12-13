@@ -56,10 +56,9 @@ public class TopicModel {
         this.showTopicsNum = showTopicsNum;
     }
 
-    public TopicModel(long taskId, long randomSeed, int language) {
+    public TopicModel(long taskId, long randomSeed) {
         this.taskId = taskId;
         this.randomSeed = randomSeed;
-        this.language = language;
     }
 
     @SuppressWarnings("unchecked")
@@ -125,7 +124,9 @@ public class TopicModel {
         }
     }
 
-    public void loadDataChunk(DataFormat.MVMATopicModel model, DataChunk dataChunk, Rule rule) {
+    public void loadDataChunk(DataFormat.MVMATopicModel model, DataChunk dataChunk, Rule rule, int language) {
+        this.language = language;
+
         mvmaTopicModel = new MVMATopicModel(model, randomSeed, taskId);
         Alphabet alphabet = mvmaTopicModel.getAlphabet(language);
         long dataChunkId = dataChunk.getMeta().getId();
@@ -141,9 +142,35 @@ public class TopicModel {
             valueList = new ArrayList<>();
 
         for (int i = 0; i < dataChunk.getInstanceAlphabet().size(); i++) {
+            DataFormat.Instance dataInstance = dataChunk.getInstances().get(i);
 
+            int tokenCount = 0;
+            for (DataFormat.Token token : dataInstance.getTokensList())
+                tokenCount += token.getCount();
+
+            FeatureSequence featureSequence = new FeatureSequence(alphabet, tokenCount);
+            float[] values = new float[0];
+            if (hasValue)
+                values = new float[tokenCount];
+
+            tokenCount = 0;
+            for (DataFormat.Token token : dataInstance.getTokensList()) {
+                Object entry = dataChunk.getTokenAlphabet().lookupObject(token.getType());
+                entry = rule.getSynonym(dataChunkId, (String) entry);
+                if (stopWordSet.contains(((String) entry).toLowerCase())) continue;
+
+                int type = alphabet.lookupIndex(entry);
+                for (int j = 0; j < token.getCount(); j++) {
+                    featureSequence.add(type);
+                    if (hasValue)
+                        values[tokenCount++] = token.getValues(j);
+                }
+            }
+
+            instanceList.add(new Instance(featureSequence, null, dataChunk.getInstanceAlphabet().lookupObject(i), null));
+            if (hasValue)
+                valueList.add(values);
         }
-
     }
 
     public void training() {
@@ -157,7 +184,7 @@ public class TopicModel {
 
 
 
-    public void inference() {
+    public void inference(int numIteration, int burnId, int thinning) {
 
     }
 
