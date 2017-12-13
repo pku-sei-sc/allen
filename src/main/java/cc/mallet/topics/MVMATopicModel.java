@@ -711,7 +711,7 @@ public class MVMATopicModel {
         }
     }
 
-    public Float[] inference(Instance instances, int language, int iteratetime){
+    public float[] inference(Instance instances, int language, int iteratetime){
         Alphabet alphabet = instances.getDataAlphabet();
         int[] currentTypeTopicCounts = new int[numTopics];
         int[] localTopicCounts= new int[numTopics];
@@ -729,11 +729,15 @@ public class MVMATopicModel {
                 sumtokens--;
                 continue;
             }
-            int topic = (int) Math.random() * numTopics;
+            int topic = (int)  random.nextUniform() * numTopics;
             topics[position] = topic;
             localTopicCounts[topic]++;
         }
+
+
         //迭代
+        float[][] P_tmp = new float[20][numTopics];
+        int index=0;
         for(int i=0;i<iteratetime;i++){
             float[] scores = new float[numTopics];
             float score = 0;
@@ -773,11 +777,25 @@ public class MVMATopicModel {
                 // Put that new topic into the counts
                 topics[position] = newTopic;
             }
+            //sample
+            if(i>100 && i%5==0){
+                for(int k=0;k<numTopics;k++){
+                    P_tmp[index][k]= (float)localTopicCounts[k]/(float)sumtokens;
+                }
+                index++;
+            }
+
         }
-        Float[] P = new Float[numTopics];
+        float [] P = new float[numTopics];
+
         for(int i=0;i<numTopics;i++){
-            P[i]= (float)localTopicCounts[i]/(float)sumtokens;
+            float tmp = 0;
+            for(int j=0;j<index;j++){
+                tmp+= P_tmp[j][i];
+            }
+            P[i] = tmp/index;
         }
         return P;
     }
+
 }

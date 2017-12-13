@@ -1,11 +1,9 @@
 package cn.edu.pku.sei.sc.allen.service;
 
+import cc.mallet.topics.MVMATopicModel;
 import cc.mallet.types.Alphabet;
 import cn.edu.pku.sei.sc.allen.lang.BadRequestException;
-import cn.edu.pku.sei.sc.allen.model.DataChunk;
-import cn.edu.pku.sei.sc.allen.model.DataChunkMeta;
-import cn.edu.pku.sei.sc.allen.model.SqlDataSource;
-import cn.edu.pku.sei.sc.allen.model.TaskStatus;
+import cn.edu.pku.sei.sc.allen.model.*;
 import cn.edu.pku.sei.sc.allen.model.data.DataFormat;
 import cn.edu.pku.sei.sc.allen.storage.DataChunkMetaStorage;
 import cn.edu.pku.sei.sc.allen.storage.SqlDataSourceStorage;

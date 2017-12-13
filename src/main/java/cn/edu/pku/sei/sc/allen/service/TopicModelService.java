@@ -1,5 +1,7 @@
 package cn.edu.pku.sei.sc.allen.service;
 
+import cc.mallet.topics.MVMATopicModel;
+import cc.mallet.types.Alphabet;
 import cn.edu.pku.sei.sc.allen.algorithm.TopicModel;
 import cn.edu.pku.sei.sc.allen.lang.BadRequestException;
 import cn.edu.pku.sei.sc.allen.model.*;
