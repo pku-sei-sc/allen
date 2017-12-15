@@ -27,17 +27,23 @@ public class PMADSimMeasure {
         }
         return (float) (dotProduct / (Math.sqrt(normA) * Math.sqrt(normB)));
     }
-    public float klDivergence(float[] p1, float[] p2) {
-        float klDiv = 0.0f;
+    public double klDivergence(float[] p1, float[] p2) {
+        double klDiv = 0.0f;
+        double epsilon = 0.001f;
+//        for (int i = 0; i < p1.length; ++i) {
+//            double p = p1[i] > epsilon ? p1[i] : epsilon;
+//            double q = p2[i] > epsilon ? p2[i] : epsilon;
+//            klDiv += p * Math.log(p / q);
+//        }
+
         for (int i = 0; i < p1.length; ++i) {
-            if (p1[i] == 0) {
+            if (p1[i] == 0.0 || p2[i] == 0.0)
                 continue;
-            }
-            if (p2[i] == 0.0) {
-                continue;
-            }
+//            double p = p1[i] > epsilon ? p1[i] : epsilon;
+//            double q = p2[i] > epsilon ? p2[i] : epsilon;
             klDiv += p1[i] * Math.log(p1[i] / p2[i]);
         }
+
         return klDiv; // moved this division out of the loop -DM
     }
 

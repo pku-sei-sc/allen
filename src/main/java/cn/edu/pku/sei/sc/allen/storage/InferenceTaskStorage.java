@@ -14,4 +14,6 @@ public interface InferenceTaskStorage extends CrudRepository<InferenceTask, Long
 
     List<InferenceTask> findAll();
 
+    InferenceTask findByManifestId(String manifestId);
+
 }

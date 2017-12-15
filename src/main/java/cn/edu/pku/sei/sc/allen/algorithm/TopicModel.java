@@ -168,9 +168,11 @@ public class TopicModel {
                 }
             }
 
-            instanceList.add(new Instance(featureSequence, null, dataChunk.getInstanceAlphabet().lookupObject(i), null));
-            if (hasValue)
-                valueList.add(values);
+            if (featureSequence.size() != 0 ) {
+                instanceList.add(new Instance(featureSequence, null, dataChunk.getInstanceAlphabet().lookupObject(i), null));
+                if (hasValue)
+                    valueList.add(values);
+            }
         }
     }
 
