@@ -158,6 +158,7 @@ public class TopicModel {
                 Object entry = dataChunk.getTokenAlphabet().lookupObject(token.getType());
                 entry = rule.getSynonym(dataChunkId, (String) entry);
                 if (stopWordSet.contains(((String) entry).toLowerCase())) continue;
+                if (!alphabet.contains(entry)) continue;
 
                 int type = alphabet.lookupIndex(entry);
                 for (int j = 0; j < token.getCount(); j++) {
@@ -182,10 +183,13 @@ public class TopicModel {
         mvmaTopicModel.training();
     }
 
+    public void inference(int numIteration, int burnIn, int thinning) {
+        mvmaTopicModel.inference(instanceList, language, numIteration, burnIn, thinning);
+    }
 
-
-    public void inference(int numIteration, int burnId, int thinning) {
-
+    public DataFormat.InferenceResult getInferenceResult() {
+        checkMVMATopicModel();
+        return mvmaTopicModel.storeInferenceResult();
     }
 
     public DataFormat.MVMATopicModel getModel() {
@@ -213,22 +217,22 @@ public class TopicModel {
         return mvmaTopicModel.getTotalTime();
     }
 
-    public List<Float> getAbnormal(DataFormat.MVMATopicModel model, List<DataChunk> dataChunks,Rule rule ){
-        PMADSimMeasure sim = null;
-        List<Float> like = new ArrayList<>() ;
-
-        loadDataChunks(dataChunks,rule);
-        MVMATopicModel mvmaTopicModel = new MVMATopicModel(model.getNumTopics(), model.getAlphaSum(),model.getBetaSum(), randomSeed, taskId);
-        mvmaTopicModel.loadmodel(model);
-
-        for (int i=0;i<instanceLists[0].size();i++){
-            Instance instanceA = instanceLists[0].get(i);
-            Instance instanceB = instanceLists[1].get(i);
-            Float[] p1 = mvmaTopicModel.inference(instanceA,0,10);
-            Float[] p2 =mvmaTopicModel.inference(instanceB,1,10);
-            like.add(sim.innerProduct(p1,p2));
-        }
-        return like;
-    }
+//    public List<Float> getAbnormal(DataFormat.MVMATopicModel model, List<DataChunk> dataChunks,Rule rule ){
+//        PMADSimMeasure sim = null;
+//        List<Float> like = new ArrayList<>() ;
+//
+//        loadDataChunks(dataChunks,rule);
+//        MVMATopicModel mvmaTopicModel = new MVMATopicModel(model.getNumTopics(), model.getAlphaSum(),model.getBetaSum(), randomSeed, taskId);
+//        mvmaTopicModel.loadmodel(model);
+//
+//        for (int i=0;i<instanceLists[0].size();i++){
+//            Instance instanceA = instanceLists[0].get(i);
+//            Instance instanceB = instanceLists[1].get(i);
+//            Float[] p1 = mvmaTopicModel.inference(instanceA,0,10);
+//            Float[] p2 =mvmaTopicModel.inference(instanceB,1,10);
+//            like.add(sim.innerProduct(p1,p2));
+//        }
+//        return like;
+//    }
 
 }

@@ -7,7 +7,7 @@ import java.util.List;
  */
 public class PMADSimMeasure {
 
-    public Float innerProduct(Float[] distA, Float[] distB) {
+    public float innerProduct(float[] distA, float[] distB) {
         float r = 0;
         for (int i = 0; i < distA.length; i++) {
             r += distA[i] * distB[i];
@@ -16,19 +16,19 @@ public class PMADSimMeasure {
     }
 
 
-    public static double cosineSimilarity(double[] vectorA, double[] vectorB) {
-        double dotProduct = 0.0;
-        double normA = 0.0;
-        double normB = 0.0;
+    public  float cosineSimilarity(float[] vectorA, float[] vectorB) {
+        float dotProduct = 0.0f;
+        float normA = 0.0f;
+        float normB = 0.0f;
         for (int i = 0; i < vectorA.length; i++) {
             dotProduct += vectorA[i] * vectorB[i];
             normA += Math.pow(vectorA[i], 2);
             normB += Math.pow(vectorB[i], 2);
         }
-        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+        return (float) (dotProduct / (Math.sqrt(normA) * Math.sqrt(normB)));
     }
-    public static double klDivergence(double[] p1, double[] p2) {
-        double klDiv = 0.0;
+    public float klDivergence(float[] p1, float[] p2) {
+        float klDiv = 0.0f;
         for (int i = 0; i < p1.length; ++i) {
             if (p1[i] == 0) {
                 continue;
@@ -43,11 +43,11 @@ public class PMADSimMeasure {
 
 
 
-    public static double sum(List<Double> ensScores) {
-        double sum = 0;
-        for (Double double1 : ensScores) {
+    public static float sum(List<Float> ensScores) {
+        float sum = 0;
+        for (float float1 : ensScores) {
 
-            sum += double1;
+            sum += float1;
         }
         return sum;
     }

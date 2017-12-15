@@ -1,7 +1,5 @@
 package cn.edu.pku.sei.sc.allen.service;
 
-import cc.mallet.topics.MVMATopicModel;
-import cc.mallet.types.Alphabet;
 import cn.edu.pku.sei.sc.allen.algorithm.TopicModel;
 import cn.edu.pku.sei.sc.allen.lang.BadRequestException;
 import cn.edu.pku.sei.sc.allen.model.*;
@@ -19,8 +17,14 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
-import java.io.*;
-import java.util.*;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -50,6 +54,16 @@ public class TopicModelService {
 
     private String modelPath = "model";
 
+    private String resultPath = "result";
+
+    public String getResultPath() {
+        return resultPath;
+    }
+
+    public void setResultPath(String resultPath) {
+        this.resultPath = resultPath;
+    }
+
     //region getter setter
     public String getModelPath() {
         return modelPath;
@@ -68,6 +82,12 @@ public class TopicModelService {
         File modelDir = new File(modelPath);
         if (!modelDir.isDirectory() && !modelDir.mkdir())
             throw new IllegalStateException("无法创建model目录，请手动创建目录后重试");
+
+        if (resultPath.endsWith("/"))
+            resultPath = resultPath.substring(0, resultPath.length() - 1);
+        File resultDir = new File(resultPath);
+        if (!resultDir.isDirectory() && !resultDir.mkdir())
+            throw new IllegalStateException("无法创建result目录，请手动创建目录后重试");
     }
 
     public TrainingTask createTrainingTask(List<Long> dataChunkIds, String ruleFile, int totalTopics,
@@ -94,6 +114,10 @@ public class TopicModelService {
 
     private String getModelFilePath(String manifestId) {
         return modelPath + "/" + manifestId + "/model.mdl";
+    }
+
+    private String getResultFilePath(String manifestId) {
+        return resultPath + "/" + manifestId + "/result.ret";
     }
 
     @Async
@@ -219,6 +243,7 @@ public class TopicModelService {
         return inferenceTaskStorage.save(inferenceTask);
     }
 
+    @Async
     public void startInference(long inferenceTaskId, boolean forced) throws IOException {
         InferenceTask inferenceTask = inferenceTaskStorage.findOne(inferenceTaskId);
 
@@ -240,14 +265,14 @@ public class TopicModelService {
             logger.info("Inference task id:{} start!", inferenceTaskId);
 
             inferenceTask.setManifestId(UUID.randomUUID().toString());
-            File distFile = new File(getModelFilePath(inferenceTask.getManifestId()));
+            File resultFile = new File(getResultFilePath(inferenceTask.getManifestId()));
 
-            while (distFile.isFile()) {
+            while (resultFile.isFile()) {
                 inferenceTask.setManifestId(UUID.randomUUID().toString());
-                distFile = new File(getModelFilePath(inferenceTask.getManifestId()));
+                resultFile = new File(getResultFilePath(inferenceTask.getManifestId()));
             }
 
-            if (!distFile.getParentFile().isDirectory() && !distFile.getParentFile().mkdir())
+            if (!resultFile.getParentFile().isDirectory() && !resultFile.getParentFile().mkdir())
                 throw new IllegalStateException("无法创建文件子目录");
 
             //加载数据块
@@ -269,8 +294,15 @@ public class TopicModelService {
 
             topicModel.inference(inferenceTask.getNumIterations(), inferenceTask.getBurnIn(), inferenceTask.getThinning());
 
+            DataFormat.InferenceResult result = topicModel.getInferenceResult();
+            try (FileOutputStream fileOutputStream = new FileOutputStream(resultFile)) {
+                result.writeTo(fileOutputStream);
+            }
 
+            inferenceTask.setStatus(TaskStatus.Finished);
+            inferenceTaskStorage.save(inferenceTask);
 
+            logger.info("Inference task id:{} finished!", inferenceTaskId);
 
         } finally {
             inferenceTaskMap.remove(inferenceTaskId);
