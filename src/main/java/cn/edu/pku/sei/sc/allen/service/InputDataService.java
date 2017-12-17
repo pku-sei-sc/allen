@@ -46,7 +46,7 @@ public class InputDataService {
 
     private String dataPath = "data";
 
-    private int partSize = 5000;
+    private int partSize = 1_000_000;
 
     //region getter setter
     public String getDataPath() {
