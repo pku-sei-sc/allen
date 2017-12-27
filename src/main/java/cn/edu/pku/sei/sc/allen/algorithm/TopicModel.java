@@ -519,6 +519,8 @@ public class TopicModel {
     public void loadDataChunk(DataFormat.MVMATopicModel model, DataChunk dataChunk, Rule rule, int language) {
         this.language = language;
 
+        int scale = 20;
+
         mvmaTopicModel = new MVMATopicModel(model, randomSeed, taskId);
         Alphabet alphabet = mvmaTopicModel.getAlphabet(language);
         long dataChunkId = dataChunk.getMeta().getId();
@@ -538,7 +540,7 @@ public class TopicModel {
 
             int tokenCount = 0;
             for (DataFormat.Token token : dataInstance.getTokensList())
-                tokenCount += token.getCount();
+                tokenCount += token.getCount() * scale;
 
             FeatureSequence featureSequence = new FeatureSequence(alphabet, tokenCount);
             float[] values = new float[0];
@@ -554,9 +556,11 @@ public class TopicModel {
 
                 int type = alphabet.lookupIndex(entry);
                 for (int j = 0; j < token.getCount(); j++) {
-                    featureSequence.add(type);
-                    if (hasValue)
-                        values[tokenCount++] = token.getValues(j);
+                    for (int k = 0; k < scale; k++) {
+                        featureSequence.add(type);
+                        if (hasValue)
+                            values[tokenCount++] = token.getValues(j);
+                    }
                 }
             }
 

@@ -657,7 +657,7 @@ public class MVMATopicModel {
     public float[] inference(Instance instances, int language, int numIterations, int burnIn, int thinning){
         String instancesName = (String) instances.getName();
 
-        boolean interesting = instancesName.equals("3301001_T0000000000001587064_33845262");
+//        boolean interesting = instancesName.equals("3301001_T0000000000001587064_33845262");
 
         int[] currentTypeTopicCounts;
 
@@ -705,9 +705,9 @@ public class MVMATopicModel {
                     type = alphabets[language].lookupIndex(token);
                 }
                 currentTypeTopicCounts = typeTopicCounts[type];
-                if (interesting) {
-                    log.info("token:{}\ttypeTopicCounts:{}", token, currentTypeTopicCounts);
-                }
+//                if (interesting) {
+//                    log.info("token:{}\ttypeTopicCounts:{}", token, currentTypeTopicCounts);
+//                }
                 for (int topic = 0; topic < numTopics; topic++) {
                     score =
                             (alpha + localTopicCounts[topic]) *
