@@ -1,9 +1,10 @@
 package cn.edu.pku.sei.sc.allen.controller;
 
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RestController;
+import cn.edu.pku.sei.sc.allen.service.ADService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.io.IOException;
 
 /**
  * Abnormal Detection
@@ -13,10 +14,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/ad")
 public class ADController {
 
-    @RequestMapping(value = "", method = RequestMethod.POST)
-    public void doAbnormalDetection() {
+    @Autowired
+    private ADService adService;
 
+    @RequestMapping(value = "/", method = RequestMethod.POST)
+    public void doAbnormalDetection(@RequestParam String manifestID1,
+                                    @RequestParam String manifestID2,
+                                    @RequestParam String method,
+                                    @RequestParam(required = false, defaultValue = "100") int top) throws IOException {
+        adService.adRun(manifestID1, manifestID2, method, top);
     }
+
 
     @RequestMapping(value = "/{taskId}", method = RequestMethod.GET)
     public void getProgress(@PathVariable long taskId) {

@@ -46,6 +46,10 @@ public class MVMATopicModel {
     private boolean[] hasValue;
     private Alphabet[] alphabets;
 
+    //for inference
+    private float[][] instanceTopicDists;
+    private InstanceList instanceList;
+
     private transient int[] vocabularySizes;
 
     private transient float[] alphas;
@@ -131,6 +135,14 @@ public class MVMATopicModel {
 
     //endregion
 
+    public Alphabet getAlphabet(int language) {
+        return alphabets[language];
+    }
+
+    public boolean hasValue(int language) {
+        return hasValue[language];
+    }
+
     public MVMATopicModel(int numTopics, float alphaSum, float betaSum, long randomSeed, int numThreads, long taskId) {
         this.numTopics = numTopics;
         this.alphaSum = alphaSum;
@@ -174,8 +186,13 @@ public class MVMATopicModel {
         this.topicLogGammas = new float[numTopics];
     }
 
-    public void addTrainingInstances(InstanceList[] training, ArrayList<float[]>[] valueList) {
-        realFeatures = valueList;
+    public MVMATopicModel(DataFormat.MVMATopicModel model, long randomSeed, long taskId) {
+        this(model.getNumTopics(), model.getAlphaSum(), model.getBetaSum(), randomSeed, taskId);
+        loadModel(model);
+    }
+
+    public void addTrainingInstances(InstanceList[] training, ArrayList<float[]>[] valueLists) {
+        realFeatures = valueLists;
         numLanguages = training.length;
 
         languageTokensPerTopic = new int[numLanguages][numTopics];
@@ -226,7 +243,7 @@ public class MVMATopicModel {
                 languageTypeTopicCountsCache[thread][language] = new int[vocabularySizes[language]][numTopics];
 
 
-            if (valueList[language] != null) {
+            if (valueLists[language] != null) {
                 hasValue[language] = true;
                 languageTypeTopicSums[language] = new float[vocabularySizes[language]][numTopics];
                 languageMus[language] = new float[vocabularySizes[language]];
@@ -275,7 +292,7 @@ public class MVMATopicModel {
 
                     languageTypeTopicCounts[language][type][topic]++;
                     if (hasValue[language]) {
-                        float value = valueList[language].get(doc)[position];
+                        float value = valueLists[language].get(doc)[position];
 
                         languageTypeTopicSums[language][type][topic] += value;
                         languageMus[language][type] += value;
@@ -715,6 +732,151 @@ public class MVMATopicModel {
         return logLikelihood;
     }
 
+    public void inference(InstanceList instanceList, int language, int numIterations, int burnIn, int thinning) {
+        this.instanceList = instanceList;
+        instanceTopicDists = new float[instanceList.size()][];
+
+        wordsPerTopic = 100;
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        PrintStream printStream = new PrintStream(byteArrayOutputStream);
+        printStream.println("Training task id:" + taskId + "\titeration:"+ iterationsSoFar +"/"+ maxIteration +"\tTop words:");
+        printTopWords(printStream, wordsPerTopic);
+        log.info(byteArrayOutputStream.toString());
+
+        int step = instanceList.size() / 1000;
+        int numInstances = instanceList.size();
+        step = step == 0 ? 1 : step;
+
+        for (int i = 0; i < instanceList.size(); i++) {
+            Instance instance = instanceList.get(i);
+            instanceTopicDists[i] = inference(instance, language, numIterations, burnIn, thinning);
+
+            if ((i + 1) % step == 0) {
+                float progress = (float) ((float) (i + 1) * 100.0 / numInstances);
+                log.info("Inference task id:{}\tinstance:{}/{}\tprogress:{}%", taskId, i + 1, numInstances,
+                        String.format("%.1f", progress));
+            }
+        }
+        log.info("Training task id:{} inference finished!", taskId);
+    }
+
+    public float[] inference(Instance instances, int language, int numIterations, int burnIn, int thinning){
+        String instancesName = (String) instances.getName();
+
+//        boolean interesting = instancesName.equals("3301001_T0000000000001587064_33845262");
+
+        int[] currentTypeTopicCounts;
+
+        Arrays.fill(localTopicCounts, 0);
+
+        FeatureSequence tokens = (FeatureSequence) instances.getData();
+        int[] topics = new int[tokens.size()];
+        int[][] typeTopicCounts = languageTypeTopicCounts[language];
+        int[] tokensPerTopic = languageTokensPerTopic[language];
+        int numTokens = tokens.size();
+
+        double beta =  betas[language];
+        double alpha = alphas[language];
+
+        //随机初始化
+        for (int position = 0; position < tokens.size(); position++) {
+            Object token= tokens.get(position);
+            if(!alphabets[language].contains(token)){
+                numTokens--;
+                continue;
+            }
+            int topic = (int)  (random.nextUniform() * numTopics);
+            topics[position] = topic;
+            localTopicCounts[topic]++;
+        }
+
+
+        //迭代
+        double[] pSum = new double[numTopics];
+        int numSamples=0;
+        for(int i=0;i<numIterations;i++) {
+            double[] scores = new double[numTopics];
+            double score = 0;
+            double sum = 0;
+            int newTopic;
+            int type=0;
+
+            for(int position = 0; position < tokens.size(); position++){
+                sum = 0;
+                localTopicCounts[topics[position]]--;
+
+                Object token= tokens.get(position);
+                if(!alphabets[language].contains(token))continue;
+                else {
+                    type = alphabets[language].lookupIndex(token);
+                }
+                currentTypeTopicCounts = typeTopicCounts[type];
+//                if (interesting) {
+//                    log.info("token:{}\ttypeTopicCounts:{}", token, currentTypeTopicCounts);
+//                }
+                for (int topic = 0; topic < numTopics; topic++) {
+                    score =
+                            (alpha + localTopicCounts[topic]) *
+                                    ((beta + currentTypeTopicCounts[topic]) /
+                                            (betaSum + tokensPerTopic[topic]));
+
+                    sum += score;
+                    scores[topic] = score;
+                }
+                double sample = random.nextUniform() * sum;
+
+                // Figure out which topic contains that point
+                newTopic = -1;
+                while (sample > 0.0) {
+                    newTopic++;
+                    if (newTopic == numTopics - 1)
+                        break;
+                    sample -= scores[newTopic];
+                }
+                if (newTopic == -1) {
+                    throw new IllegalStateException ("SimpleLDA: New topic not sampled.");
+                }
+
+                // Put that new topic into the counts
+                topics[position] = newTopic;
+                localTopicCounts[newTopic]++;
+            }
+
+            //sample
+            if(i >= burnIn && (i - burnIn) % thinning == 0) {
+                for(int k = 0; k < numTopics; k++){
+                    pSum[k] += (double) localTopicCounts[k] / (double) numTokens;
+                }
+                numSamples++;
+            }
+
+        }
+
+        float[] result = new float[numTopics];
+
+        for(int i = 0; i < numTopics; i++)
+            result[i] = (float) pSum[i] / numSamples;
+
+        return result;
+    }
+
+    public DataFormat.InferenceResult storeInferenceResult() {
+        DataFormat.InferenceResult.Builder resultBuilder = DataFormat.InferenceResult.newBuilder()
+                .setNumTopics(numTopics);
+
+        for (int i = 0; i < instanceList.size(); i++) {
+            Instance instance = instanceList.get(i);
+            DataFormat.InstanceTopicDist.Builder topicDistBuilder = DataFormat.InstanceTopicDist.newBuilder()
+                    .setInstanceId((String) instance.getName());
+
+            for (int j = 0; j < numTopics; j++)
+                topicDistBuilder.addTopicShare(instanceTopicDists[i][j]);
+            resultBuilder.addInstanceTopicDists(topicDistBuilder);
+        }
+
+        return resultBuilder.build();
+    }
+
     public DataFormat.MVMATopicModel storeModel() {
         DataFormat.MVMATopicModel.Builder modelBuilder = DataFormat.MVMATopicModel.newBuilder()
                 .setNumTopics(numTopics)
@@ -747,6 +909,62 @@ public class MVMATopicModel {
         }
 
         return modelBuilder.build();
+    }
+
+    private void loadModel(DataFormat.MVMATopicModel model) {
+        this.numLanguages = model.getNumLanguages();
+
+        alphabets = new Alphabet[numLanguages];
+        hasValue = new boolean[numLanguages];
+        vocabularySizes = new int[numLanguages];
+
+        betas = new float[numLanguages];
+        betaSums = new float[numLanguages];
+        languageTokensPerTopic = new int[numLanguages][numTopics];
+
+        languageTypeTopicCounts = new int[numLanguages][][];
+        languageTypeTopicSums = new float[numLanguages][][];
+        languageMus = new float[numLanguages][];
+        languageSigma2s = new float[numLanguages][];
+
+
+        int ttcIdx = 0;
+        int tptIdx = 0;
+        int ttsIdx = 0;
+        int mIdx = 0;
+        int sIdx = 0;
+        for (int i = 0; i < numLanguages; i++) {
+            alphabets[i] = new Alphabet(String.class);
+            DataFormat.Alphabet alphabet = model.getAlphabets(i);
+            for (int j = 0; j < alphabet.getEntryCount(); j++)
+                alphabets[i].lookupIndex(alphabet.getEntry(j));
+
+            hasValue[i] = model.getHasValue(i);
+            vocabularySizes[i] = alphabet.getEntryCount();
+
+            betas[i] = betaSum / vocabularySizes[i];
+            betaSums[i] = betaSum;
+
+            languageTypeTopicCounts[i] = new int[vocabularySizes[i]][numTopics];
+            for (int j = 0; j < vocabularySizes[i]; j++)
+                for (int k = 0; k < numTopics; k++)
+                    languageTypeTopicCounts[i][j][k] = model.getLanguageTypeTopicCounts(ttcIdx++);
+
+            for (int j = 0; j < numTopics; j++)
+                languageTokensPerTopic[i][j] = model.getLanguageTokensPerTopic(tptIdx++);
+
+            if (hasValue[i]) {
+                languageTypeTopicSums[i] = new float[vocabularySizes[i]][numTopics];
+                languageMus[i] = new float[vocabularySizes[i]];
+                languageSigma2s[i] = new float[vocabularySizes[i]];
+                for (int j = 0; j < vocabularySizes[i]; j++) {
+                    for (int k = 0; k < numTopics; k++)
+                        languageTypeTopicSums[i][j][k] = model.getLanguageTypeTopicSums(ttsIdx++);
+                    languageMus[i][j] = model.getLanguageMus(mIdx++);
+                    languageSigma2s[i][j] = model.getLanguageSigma2S(sIdx++);
+                }
+            }
+        }
     }
 
 }

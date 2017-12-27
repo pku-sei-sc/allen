@@ -16,5 +16,6 @@ lib/
 *.ear
 
 # custom #
-data/
-model/
+*.mdl
+*.dat
+*.ret

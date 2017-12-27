@@ -59,3 +59,13 @@ message MVMATopicModel {
 
     repeated Alphabet alphabets = 11;
 }
+
+message InstanceTopicDist {
+    string instanceId = 1;
+    repeated float topicShare = 2;
+}
+
+message InferenceResult {
+    int32 numTopics = 1;
+    repeated InstanceTopicDist instanceTopicDists = 2;
+}
