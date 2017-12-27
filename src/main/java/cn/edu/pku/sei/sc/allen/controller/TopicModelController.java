@@ -82,7 +82,7 @@ public class TopicModelController {
 
     @RequestMapping(value = "/inference/{inferenceTaskId}/start", method = RequestMethod.POST)
     public void startInference(@PathVariable long inferenceTaskId,
-                               @RequestParam(required = false, defaultValue = "false") boolean forced) throws IOException {
+                               @RequestParam(required = false, defaultValue = "false") boolean forced) throws IOException, ExecutionException, InterruptedException {
         topicModelService.startInference(inferenceTaskId, forced);
     }
 

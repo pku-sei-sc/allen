@@ -582,7 +582,7 @@ public class TopicModel {
         mvmaTopicModel.training();
     }
 
-    public void inference(int numIteration, int burnIn, int thinning) {
+    public void inference(int numIteration, int burnIn, int thinning) throws ExecutionException, InterruptedException {
         mvmaTopicModel.inference(instanceList, language, numIteration, burnIn, thinning);
     }
 

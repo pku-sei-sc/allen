@@ -9,10 +9,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.io.Serializable;
 import java.text.NumberFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Iterator;
-import java.util.TreeSet;
+import java.util.*;
 import java.util.concurrent.*;
 
 /**
@@ -187,7 +184,7 @@ public class MVMATopicModel {
     }
 
     public MVMATopicModel(DataFormat.MVMATopicModel model, long randomSeed, long taskId) {
-        this(model.getNumTopics(), model.getAlphaSum(), model.getBetaSum(), randomSeed, taskId);
+        this(model.getNumTopics(), model.getAlphaSum(), model.getBetaSum(), randomSeed, 1, taskId);
         loadModel(model);
     }
 
@@ -732,7 +729,36 @@ public class MVMATopicModel {
         return logLikelihood;
     }
 
-    public void inference(InstanceList instanceList, int language, int numIterations, int burnIn, int thinning) {
+    private class InferenceRunner implements Runnable {
+
+        private int threadId;
+
+        private int instanceId;
+
+        private Instance instance;
+
+        private int language;
+
+        private int burnIn;
+
+        private int thinning;
+
+        public InferenceRunner(int threadId, int instanceId, Instance instance, int language, int burnIn, int thinning) {
+            this.threadId = threadId;
+            this.instanceId = instanceId;
+            this.instance = instance;
+            this.language = language;
+            this.burnIn = burnIn;
+            this.thinning = thinning;
+        }
+
+        @Override
+        public void run() {
+            instanceTopicDists[instanceId] = inference(instance, language, numIterations, burnIn, thinning, threadId);
+        }
+    }
+
+    public void inference(InstanceList instanceList, int language, int numIterations, int burnIn, int thinning) throws ExecutionException, InterruptedException {
         this.instanceList = instanceList;
         instanceTopicDists = new float[instanceList.size()][];
 
@@ -747,9 +773,12 @@ public class MVMATopicModel {
         int numInstances = instanceList.size();
         step = step == 0 ? 1 : step;
 
+        List<Future> futures = new ArrayList<>();
+
         for (int i = 0; i < instanceList.size(); i++) {
             Instance instance = instanceList.get(i);
-            instanceTopicDists[i] = inference(instance, language, numIterations, burnIn, thinning);
+
+            futures.add(executorService.submit(new InferenceRunner(i % numThreads, i, instance, language, burnIn, thinning)));
 
             if ((i + 1) % step == 0) {
                 float progress = (float) ((float) (i + 1) * 100.0 / numInstances);
@@ -757,17 +786,20 @@ public class MVMATopicModel {
                         String.format("%.1f", progress));
             }
         }
+
+        for (Future future : futures)
+            future.get();
+
         log.info("Training task id:{} inference finished!", taskId);
     }
 
-    public float[] inference(Instance instances, int language, int numIterations, int burnIn, int thinning){
+    public float[] inference(Instance instances, int language, int numIterations, int burnIn, int thinning, int threadId){
         String instancesName = (String) instances.getName();
 
-//        boolean interesting = instancesName.equals("3301001_T0000000000001587064_33845262");
+        int[] localTopicCounts = this.localTopicCounts[threadId];
+        Arrays.fill(localTopicCounts, 0);
 
         int[] currentTypeTopicCounts;
-
-        Arrays.fill(localTopicCounts, 0);
 
         FeatureSequence tokens = (FeatureSequence) instances.getData();
         int[] topics = new int[tokens.size()];
@@ -785,7 +817,7 @@ public class MVMATopicModel {
                 numTokens--;
                 continue;
             }
-            int topic = (int)  (random.nextUniform() * numTopics);
+            int topic = ThreadLocalRandom.current().nextInt(numTopics);
             topics[position] = topic;
             localTopicCounts[topic]++;
         }
@@ -823,7 +855,7 @@ public class MVMATopicModel {
                     sum += score;
                     scores[topic] = score;
                 }
-                double sample = random.nextUniform() * sum;
+                double sample = ThreadLocalRandom.current().nextDouble() * sum;
 
                 // Figure out which topic contains that point
                 newTopic = -1;

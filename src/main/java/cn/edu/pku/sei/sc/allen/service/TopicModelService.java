@@ -248,7 +248,7 @@ public class TopicModelService {
     }
 
     @Async
-    public void startInference(long inferenceTaskId, boolean forced) throws IOException {
+    public void startInference(long inferenceTaskId, boolean forced) throws IOException, ExecutionException, InterruptedException {
         InferenceTask inferenceTask = inferenceTaskStorage.findOne(inferenceTaskId);
 
         if (inferenceTask == null)
