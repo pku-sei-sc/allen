@@ -741,14 +741,17 @@ public class MVMATopicModel {
 
         private int burnIn;
 
+        private int numIterations;
+
         private int thinning;
 
-        public InferenceRunner(int threadId, int instanceId, Instance instance, int language, int burnIn, int thinning) {
+        public InferenceRunner(int threadId, int instanceId, Instance instance, int language, int burnIn, int numIterations, int thinning) {
             this.threadId = threadId;
             this.instanceId = instanceId;
             this.instance = instance;
             this.language = language;
             this.burnIn = burnIn;
+            this.numIterations = numIterations;
             this.thinning = thinning;
         }
 
@@ -778,7 +781,7 @@ public class MVMATopicModel {
         for (int i = 0; i < instanceList.size(); i++) {
             Instance instance = instanceList.get(i);
 
-            futures.add(executorService.submit(new InferenceRunner(i % numThreads, i, instance, language, burnIn, thinning)));
+            futures.add(executorService.submit(new InferenceRunner(i % numThreads, i, instance, language, burnIn, numIterations, thinning)));
 
             if ((i + 1) % step == 0) {
                 float progress = (float) ((float) (i + 1) * 100.0 / numInstances);
