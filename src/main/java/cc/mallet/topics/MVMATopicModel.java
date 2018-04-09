@@ -184,7 +184,7 @@ public class MVMATopicModel {
     }
 
     public MVMATopicModel(DataFormat.MVMATopicModel model, long randomSeed, long taskId) {
-        this(model.getNumTopics(), model.getAlphaSum(), model.getBetaSum(), randomSeed, 1, taskId);
+        this(model.getNumTopics(), model.getAlphaSum(), model.getBetaSum(), randomSeed, 8, taskId);
         loadModel(model);
     }
 
@@ -735,7 +735,9 @@ public class MVMATopicModel {
 
         private int instanceId;
 
-        private Instance instance;
+        private int packSize;
+
+        private InstanceList instances;
 
         private int language;
 
@@ -745,10 +747,11 @@ public class MVMATopicModel {
 
         private int thinning;
 
-        public InferenceRunner(int threadId, int instanceId, Instance instance, int language, int burnIn, int numIterations, int thinning) {
+        public InferenceRunner(int threadId, int instanceId, int packSize, InstanceList instances, int language, int burnIn, int numIterations, int thinning) {
             this.threadId = threadId;
             this.instanceId = instanceId;
-            this.instance = instance;
+            this.packSize = packSize;
+            this.instances = instances;
             this.language = language;
             this.burnIn = burnIn;
             this.numIterations = numIterations;
@@ -757,7 +760,9 @@ public class MVMATopicModel {
 
         @Override
         public void run() {
-            instanceTopicDists[instanceId] = inference(instance, language, numIterations, burnIn, thinning, threadId);
+            for (int i = instanceId; i - instanceId < packSize; i++) {
+                instanceTopicDists[i] = inference(instances.get(i), language, numIterations, burnIn, thinning, threadId);
+            }
         }
     }
 
@@ -778,16 +783,20 @@ public class MVMATopicModel {
 
         List<Future> futures = new ArrayList<>();
 
-        for (int i = 0; i < instanceList.size(); i++) {
-            Instance instance = instanceList.get(i);
+        int packSize = (numInstances / numThreads) + 1;
 
-            futures.add(executorService.submit(new InferenceRunner(i % numThreads, i, instance, language, burnIn, numIterations, thinning)));
-
-            if ((i + 1) % step == 0) {
-                float progress = (float) ((float) (i + 1) * 100.0 / numInstances);
-                log.info("Inference task id:{}\tinstance:{}/{}\tprogress:{}%", taskId, i + 1, numInstances,
-                        String.format("%.1f", progress));
+        for (int i = 0; i < numThreads; i++) {
+            if (i < numThreads - 1) {
+                futures.add(executorService.submit(new InferenceRunner(i, i * packSize, packSize, instanceList, language, burnIn, numIterations, thinning)));
+            } else {
+                futures.add(executorService.submit(new InferenceRunner(i, i * packSize, numInstances - i * packSize, instanceList, language, burnIn, numIterations, thinning)));
             }
+
+//            if ((i + 1) % step == 0) {
+//                float progress = (float) ((float) (i + 1) * 100.0 / numInstances);
+//                log.info("Inference task id:{}\tinstance:{}/{}\tprogress:{}%", taskId, i + 1, numInstances,
+//                        String.format("%.1f", progress));
+//            }
         }
 
         for (Future future : futures)
