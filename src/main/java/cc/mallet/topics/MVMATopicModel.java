@@ -36,7 +36,7 @@ public class MVMATopicModel {
     private int numLanguages;
 
     private int[][][] languageTypeTopicCounts;
-    private int[][] languageTokensPerTopic;
+    private int[][] languageTokensPerTopic; //一种语言中每个主题下的词语计数
     private float[][] languageMus;
     private float[][] languageSigma2s;
     private float[][][] languageTypeTopicSums;

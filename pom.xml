@@ -75,12 +75,12 @@
     <distributionManagement>
         <repository>
             <id>sei-sc-releases</id>
-            <url>http://192.168.4.248:8081/repository/maven-releases/</url>
+            <url>http://162.105.88.31:8081/repository/maven-releases/</url>
             <name>SEI Sapiential City Releases</name>
         </repository>
         <snapshotRepository>
             <id>sei-sc-snapshots</id>
-            <url>http://192.168.4.248:8081/repository/maven-snapshots/</url>
+            <url>http://162.105.88.31:8081/repository/maven-snapshots/</url>
             <name>SEI Sapiential City Snapshots</name>
             <uniqueVersion>false</uniqueVersion>
         </snapshotRepository>
@@ -95,7 +95,7 @@
         <repository>
             <id>sei-sc-public</id>
             <name>SEI Sapiential City Public</name>
-            <url>http://192.168.4.248:8081/repository/maven-public/</url>
+            <url>http://162.105.88.31:8081/repository/maven-public/</url>
             <snapshots>
                 <enabled>true</enabled>
                 <updatePolicy>always</updatePolicy>
