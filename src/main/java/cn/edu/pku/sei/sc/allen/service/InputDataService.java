@@ -6,6 +6,7 @@ import cn.edu.pku.sei.sc.allen.lang.BadRequestException;
 import cn.edu.pku.sei.sc.allen.model.*;
 import cn.edu.pku.sei.sc.allen.model.data.DataFormat;
 import cn.edu.pku.sei.sc.allen.storage.DataChunkMetaStorage;
+import cn.edu.pku.sei.sc.allen.storage.DataChunkPacStorage;
 import cn.edu.pku.sei.sc.allen.storage.SqlDataSourceStorage;
 import cn.edu.pku.sei.sc.allen.util.JdbcUtil;
 import org.slf4j.Logger;
@@ -41,6 +42,9 @@ public class InputDataService {
 
     @Autowired
     private SqlDataSourceStorage sqlDataSourceStorage;
+
+    @Autowired
+    private DataChunkPacStorage dataChunkPacStorage;
 
     private Map<Long, Long> progressMap = new ConcurrentHashMap<>();
 
@@ -89,6 +93,20 @@ public class InputDataService {
                 .setStatus(TaskStatus.Stopped);
         return dataChunkMetaStorage.save(dataChunkMeta);
     }
+
+    public DataChunkMetaPac createDataChunkPac(long diagnoseId, long medicineId,
+                                              String descriptionDiagnose, String descriptionMedicine,
+                                              String description){
+        DataChunkMetaPac dataChunkMetaPac = new DataChunkMetaPac()
+                .setDiagnoseId(diagnoseId)
+                .setMedicineId(medicineId)
+                .setDescriptionDiagnose(descriptionDiagnose)
+                .setDescriptionMedicine(descriptionMedicine)
+                .setDescription(description)
+                .setStatus(TaskStatus.Stopped);
+        return dataChunkPacStorage.save(dataChunkMetaPac);
+    }
+
 
     private String getManifestDataPath(String manifestId) {
         return dataPath + "/" + manifestId + "/manifest.dat";
@@ -308,6 +326,21 @@ public class InputDataService {
         } finally {
             progressMap.remove(dataChunkId);
         }
+    }
+
+    @Async
+    public void inputDatachunkPac(long datachunkPacId, boolean forced) throws IOException, SQLException {
+        DataChunkMetaPac dataChunkMetaPac = dataChunkPacStorage.findOne(datachunkPacId);
+        long diagnoseId = dataChunkMetaPac.getDiagnoseId();
+        long medicineId = dataChunkMetaPac.getMedicineId();
+        inputDataChunk(diagnoseId, forced);
+        inputDataChunk(medicineId, forced);
+        if (dataChunkMetaStorage.findOne(diagnoseId).getStatus() == TaskStatus.Finished &&
+                dataChunkMetaStorage.findOne(medicineId).getStatus() == TaskStatus.Finished){
+            dataChunkMetaPac.setStatus(TaskStatus.Finished);
+        }
+        logger.info(dataChunkMetaPac.getStatus().toString());
+        dataChunkPacStorage.save(dataChunkMetaPac);
     }
 
     public long getProgress(long dataChunkId) {

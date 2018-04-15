@@ -60,6 +60,11 @@ public class TopicModelController {
         topicModelService.startTraining(trainingTaskId, forced);
     }
 
+    @RequestMapping(value = "/training/{trainingTaskId}/delete", method = RequestMethod.POST)
+    public void deleteTraining(@PathVariable long trainingTaskId) throws IOException, ExecutionException, InterruptedException {
+        trainingTaskStorage.delete(trainingTaskId);
+    }
+
     @RequestMapping(value = "/{trainingTaskId}", method = RequestMethod.GET)
     public TrainingProgress getProgress(@PathVariable long trainingTaskId) {
         return topicModelService.getProgress(trainingTaskId);
