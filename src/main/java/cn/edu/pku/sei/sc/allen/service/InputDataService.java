@@ -82,8 +82,8 @@ public class InputDataService {
     }
 
     public DataChunkMeta createDataChunk(long dataSourceId, List<String> sqls, String idName, String tokenName, String valueName) {
-        if (!dataSourceService.testSqlDataSource(dataSourceId))
-            throw new IllegalStateException("数据源连接失败");
+//        if (!dataSourceService.testSqlDataSource(dataSourceId))
+//            throw new IllegalStateException("数据源连接失败");
         DataChunkMeta dataChunkMeta = new DataChunkMeta()
                 .setDataSourceId(dataSourceId)
                 .setSqls(sqls)
@@ -184,6 +184,7 @@ public class InputDataService {
                 long lastToken = 0;
 
                 for (String sql : dataChunkMeta.getSqls()) {
+                    System.out.println(sql);
                     try (PreparedStatement preparedStatement = connection.prepareStatement(sql)) {
                         if (sqlDataSource.getUrl().toLowerCase().contains("mysql")) //mysql特殊处理
                             preparedStatement.setFetchSize(Integer.MIN_VALUE);
@@ -329,7 +330,7 @@ public class InputDataService {
     }
 
     @Async
-    public void inputDatachunkPac(long datachunkPacId, boolean forced) throws IOException, SQLException {
+    public DataChunkMetaPac inputDatachunkPac(long datachunkPacId, boolean forced) throws IOException, SQLException {
         DataChunkMetaPac dataChunkMetaPac = dataChunkPacStorage.findOne(datachunkPacId);
         long diagnoseId = dataChunkMetaPac.getDiagnoseId();
         long medicineId = dataChunkMetaPac.getMedicineId();
@@ -340,7 +341,7 @@ public class InputDataService {
             dataChunkMetaPac.setStatus(TaskStatus.Finished);
         }
         logger.info(dataChunkMetaPac.getStatus().toString());
-        dataChunkPacStorage.save(dataChunkMetaPac);
+        return dataChunkPacStorage.save(dataChunkMetaPac);
     }
 
     public long getProgress(long dataChunkId) {

@@ -11,14 +11,17 @@ import cn.edu.pku.sei.sc.allen.service.InputDataService;
 import cn.edu.pku.sei.sc.allen.storage.DataChunkMetaStorage;
 import cn.edu.pku.sei.sc.allen.storage.DataChunkPacStorage;
 import cn.edu.pku.sei.sc.allen.storage.SqlDataSourceStorage;
+import org.omg.Messaging.SYNC_WITH_TRANSPORT;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import sun.misc.Request;
 
 import java.io.IOException;
+import java.net.StandardSocketOptions;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -69,14 +72,9 @@ public class InputDataController {
                                    @RequestParam String idName,
                                    @RequestParam String tokenName,
                                    @RequestParam(required = false) String valueName) {
-        if (sqls.size() == 0 && sql == null)
-            throw new BadRequestException("SQL语句缺失");
-        if (sqls.size() == 0)
-            sqls = Collections.singletonList(sql);
         return inputDataService.createDataChunk(dataSourceId, sqls, idName, tokenName, valueName);
     }
 
-    // FIXME: 2018/4/14 获取id有误
     @RequestMapping(value = "/dataPac", method = RequestMethod.POST)
     public DataChunkMetaPac inputDataPac(@RequestParam long dataSourceId1,
                                          @RequestParam(required = false) String sql1,
@@ -93,10 +91,17 @@ public class InputDataController {
                                          @RequestParam(required = false) String descriptionDiagnose,
                                          @RequestParam(required = false) String descriptionMedicine,
                                          @RequestParam(required = false) String description){
-        long count = dataChunkMetaStorage.count();
+        if (sqls1.size() == 0 && sql1 == null)
+            throw new BadRequestException("诊断SQL语句缺失");
+        if (sqls1.size() == 0)
+            sqls1 = Collections.singletonList(sql1);
+        if (sqls2.size() == 0 && sql2 == null)
+            throw new BadRequestException("用药SQL语句缺失");
+        if (sqls2.size() == 0)
+            sqls2 = Collections.singletonList(sql2);
         DataChunkMeta diagnose = inputData(dataSourceId1, sql1, sqls1, idName1, tokenName1, valueName1);
         DataChunkMeta medicine = inputData(dataSourceId2, sql2, sqls2, idName2, tokenName2, valueName2);
-        return inputDataService.createDataChunkPac(count+1,count+2,descriptionDiagnose,descriptionMedicine,description);
+        return inputDataService.createDataChunkPac(diagnose.getId(),medicine.getId(),descriptionDiagnose,descriptionMedicine,description);
     }
 
     @RequestMapping(value = "/data/{dataChunkId}", method = RequestMethod.GET)
@@ -114,8 +119,10 @@ public class InputDataController {
 
     @RequestMapping(value = "/datapac/{dataChunkPacId}/delete", method = RequestMethod.POST)
     public void deleteDataChunkPac(@PathVariable long dataChunkPacId) {
-        dataChunkMetaStorage.delete(dataChunkPacStorage.findOne(dataChunkPacId).getDiagnoseId());
-        dataChunkMetaStorage.delete(dataChunkPacStorage.findOne(dataChunkPacId).getMedicineId());
+        if(dataChunkMetaStorage.exists(dataChunkPacStorage.findOne(dataChunkPacId).getDiagnoseId()))
+            dataChunkMetaStorage.delete(dataChunkPacStorage.findOne(dataChunkPacId).getDiagnoseId());
+        if(dataChunkMetaStorage.exists(dataChunkPacStorage.findOne(dataChunkPacId).getMedicineId()))
+            dataChunkMetaStorage.delete(dataChunkPacStorage.findOne(dataChunkPacId).getMedicineId());
         dataChunkPacStorage.delete(dataChunkPacId);
 
     }
@@ -127,6 +134,17 @@ public class InputDataController {
 
     @RequestMapping(value = "/datapac", method = RequestMethod.GET)
     public List<DataChunkMetaPac> getDatachunkPac(){return dataChunkPacStorage.findAll();}
+
+    public boolean myEqual(List<String> a1,List<String> a2) {
+        if(a1.size() != a2.size())
+            return false;
+        for(int i = 0; i < a1.size(); i++){
+            if(!a1.get(i).equals(a2.get(i))){
+                return false;
+            }
+        }
+        return true;
+    }
 
     @RequestMapping(value = "/data", method = RequestMethod.GET)
     public List<DataChunkMeta> getDataChunks() {

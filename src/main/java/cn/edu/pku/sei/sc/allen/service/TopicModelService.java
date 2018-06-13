@@ -174,10 +174,7 @@ public class TopicModelService {
 
             Rule rule = RuleUtil.loadRule(trainingTask.getRuleFile());
 
-//            topicModel.loadDataChunksReform(dataChunks, rule);
-//            topicModel.loadDataChunksReformCompress(dataChunks, rule);
-            topicModel.loadDataChunksReformReduction(dataChunks, rule);
-//            topicModel.loadDataChunks(dataChunks, rule);
+            topicModel.loadDataChunks(dataChunks, rule);
 
             //释放读取的数据资源
             dataChunks.clear();

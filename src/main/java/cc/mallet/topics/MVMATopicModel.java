@@ -133,6 +133,7 @@ public class MVMATopicModel {
     //endregion
 
     public Alphabet getAlphabet(int language) {
+        log.info("{}",language);
         return alphabets[language];
     }
 
@@ -815,8 +816,8 @@ public class MVMATopicModel {
 
         FeatureSequence tokens = (FeatureSequence) instances.getData();
         int[] topics = new int[tokens.size()];
-        int[][] typeTopicCounts = languageTypeTopicCounts[language];
-        int[] tokensPerTopic = languageTokensPerTopic[language];
+        int[][] typeTopicCounts = languageTypeTopicCounts[language]; //词语在主题中的个数
+        int[] tokensPerTopic = languageTokensPerTopic[language]; //主题下词语个数
         int numTokens = tokens.size();
 
         double beta =  betas[language];
@@ -904,6 +905,76 @@ public class MVMATopicModel {
         return result;
     }
 
+
+
+    public int match(Instance instance0, Instance instance1){
+        String instancesName1 = (String) instance1.getName();   //instance 1 药 0病 model中 0是药 1是病
+        String instancesName0 = (String) instance0.getName();
+
+        FeatureSequence tokens0 = (FeatureSequence) instance0.getData();
+        FeatureSequence tokens1 = (FeatureSequence) instance1.getData();
+        //a词分配给主题k的数目 /主题k的总数目 取最大的
+
+        int[][] typeTopicCounts = languageTypeTopicCounts[1];
+        int[] tokensPerTopic = languageTokensPerTopic[1];
+        int numTokens = tokens1.size();
+
+        double beta =  betas[0];
+        double alpha = alphas[0];
+//        System.out.println(tokens1);
+
+        int tag[] = new int[numTopics];
+        Arrays.fill(tag,0);
+        int type = 0;
+        for(int position = 0; position < tokens0.size(); position++){
+            Object token= tokens0.get(position);
+            if(!alphabets[1].contains(token))continue;  //fixme
+            else {
+                type = alphabets[1].lookupIndex(token);
+            }
+            int[] currentTypeTopicCounts = typeTopicCounts[type];
+            double max = 0.0;
+            int index = 0;
+            for (int topic = 0; topic < numTopics; topic++) {
+                double temp = (beta + currentTypeTopicCounts[topic]) /
+                        (betaSum + tokensPerTopic[topic]);
+                if (temp > max) {
+                    max = temp;
+                    index = topic;
+                }
+            }
+            tag[index] = 1;
+        }
+
+        int tag2[] = new int[numTopics];
+        int falseCount = 0;
+        int[][] typeTopicCounts0 = languageTypeTopicCounts[0];
+        int[] tokensPerTopic0 = languageTokensPerTopic[0];
+        for(int position = 0; position < tokens1.size(); position++){
+            Object token= tokens1.get(position);
+            if(!alphabets[0].contains(token))continue;  //fixme
+            else {
+                type = alphabets[0].lookupIndex(token);
+            }
+            int[] currentTypeTopicCounts0 = typeTopicCounts0[type];
+            double max = 0.0;
+            int index = 0;
+            for (int topic = 0; topic < numTopics; topic++) {
+                double temp = (beta + currentTypeTopicCounts0[topic]) /
+                        (betaSum + tokensPerTopic0[topic]);
+                if (temp > max) {
+                    max = temp;
+                    index = topic;
+                }
+            }
+            if (tag[index] != 1)
+                falseCount += 1;
+            tag2[index] = 1;
+        }
+
+//        System.out.println(falseCount);
+        return falseCount;
+    }
     public DataFormat.InferenceResult storeInferenceResult() {
         DataFormat.InferenceResult.Builder resultBuilder = DataFormat.InferenceResult.newBuilder()
                 .setNumTopics(numTopics);

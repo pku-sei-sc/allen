@@ -8,10 +8,7 @@ import cn.edu.pku.sei.sc.allen.model.data.ResultData;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.io.*;
 import java.util.*;
 
 public class AD {
@@ -116,7 +113,7 @@ public class AD {
             }
             case "kl":{
                 for (String i : set) {
-                    if (i.startsWith("1410001") || i.startsWith("3211002") || i.startsWith("6529001")) continue;
+//                    if (i.startsWith("1410001") || i.startsWith("3211002") || i.startsWith("6529001")) continue;
 //                    if (!i.startsWith("3301002")) continue;
                     ResultData resultData = new ResultData(i,pmadSimMeasure.klDivergence(map1.get(i),map2.get(i)));
                     result.add(resultData);
@@ -124,6 +121,35 @@ public class AD {
                 result.sort(Comparator.comparingDouble(ResultData::getSimilarity).reversed());
                 break;
             }
+        }
+
+        File outputFile = new File("ADresult/result"+"_"+method+".txt");
+        FileWriter fileWriter = new FileWriter(outputFile);
+        for (int i = 0; i< result.size();i++){
+            fileWriter.write(result.get(i).index);
+        }
+        for (int i = 0; i< result.size();i++){
+            String instanceId = result.get(i).index;
+            int instanceIdx1 = dataChunk1.getInstanceAlphabet().lookupIndex(instanceId);
+            int instanceIdx2 = dataChunk2.getInstanceAlphabet().lookupIndex(instanceId);
+
+            StringBuilder stringBuilder = new StringBuilder().append("Abnormal language 1 tokens:");
+            for (DataFormat.Token token : dataChunk1.getInstances().get(instanceIdx1).getTokensList()) {
+                stringBuilder.append("[").append(dataChunk1.getTokenAlphabet().lookupObject(token.getType()))
+                        .append(":").append(token.getCount()).append("] ");
+            }
+            fileWriter.write(stringBuilder.toString());
+
+            stringBuilder = new StringBuilder().append("Abnormal language 2 tokens:");
+            for (DataFormat.Token token : dataChunk2.getInstances().get(instanceIdx2).getTokensList()) {
+                stringBuilder.append("[").append(dataChunk2.getTokenAlphabet().lookupObject(token.getType()))
+                        .append(":").append(token.getCount()).append("] ");
+            }
+            fileWriter.write(stringBuilder.toString());
+
+            fileWriter.write(map1.get(instanceId).toString());
+            fileWriter.write(map2.get(instanceId).toString());
+
         }
 
         for (int i = 0; i < top; i++) {
