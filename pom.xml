@@ -75,14 +75,14 @@
     <distributionManagement>
         <repository>
             <id>sei-sc-releases</id>
-            <url>http://162.105.88.31:8081/repository/maven-releases/</url>
-            <name>SEI Sapiential City Releases</name>
+            <url>http://maven.sc.qk0.cc/repository/maven-releases</url>
+            <name>maven-releases</name>
         </repository>
         <snapshotRepository>
             <id>sei-sc-snapshots</id>
-            <url>http://162.105.88.31:8081/repository/maven-snapshots/</url>
-            <name>SEI Sapiential City Snapshots</name>
-            <uniqueVersion>false</uniqueVersion>
+            <url>http://maven.sc.qk0.cc/repository/maven-snapshots</url>
+            <name>maven-snapshots</name>
+            <uniqueVersion>true</uniqueVersion>
         </snapshotRepository>
     </distributionManagement>
 
@@ -93,16 +93,17 @@
         </repository>
         <!--软工内部maven仓库，主要用于存放本地的构建内容，以及缓存加速一些线上maven库的下载-->
         <repository>
+            <id>aliyun-maven</id>
+            <url>https://maven.aliyun.com/repository/public</url>
+        </repository>
+        <repository>
             <id>sei-sc-public</id>
-            <name>SEI Sapiential City Public</name>
-            <url>http://162.105.88.31:8081/repository/maven-public/</url>
+            <url>http://maven.sc.qk0.cc/repository/maven-public</url>
+            <releases><enabled>true</enabled></releases>
             <snapshots>
                 <enabled>true</enabled>
                 <updatePolicy>always</updatePolicy>
             </snapshots>
-            <releases>
-                <enabled>true</enabled>
-            </releases>
         </repository>
     </repositories>
 
